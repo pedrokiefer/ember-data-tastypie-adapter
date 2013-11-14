@@ -81,8 +81,8 @@ Go to http://localhost:8000/tests/ to run the Qunit tests.
 In the meantime ember.js and ember-data reach 1.0, custom compilations have been used to test the adapter.
 
 #### ember.js
-1.0.0-rc.4
+1.1.2
 
 #### ember-data
-0.13
+1.0.0 beta 3
 

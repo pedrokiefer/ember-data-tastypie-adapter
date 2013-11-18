@@ -2,7 +2,7 @@ var get = Ember.get, set = Ember.set;
 
 var env, store, adapter;
 var originalAjax, passedUrl, passedVerb, passedHash;
-var Person, person, people, Role, Group, group, Task, task;
+var Person, Role, Group, Task;
 
 module("Django Tastypie Adapter", {
   setup: function() {
@@ -68,18 +68,16 @@ var expectData = function(hash) {
   deepEqual(hash, passedHash.data, "the hash was passed along");
 };
 
-var expectState = function(state, value, p) {
-  p = p || person;
-
+var expectState = function(model, state, value) {
   if (value === undefined) { value = true; }
 
   var flag = "is" + state.charAt(0).toUpperCase() + state.substr(1);
-  equal(get(p, flag), value, "the person is " + (value === false ? "not " : "") + state);
+  equal(get(model, flag), value, "the person is " + (value === false ? "not " : "") + state);
 };
 
-var expectStates = function(state, value) {
-  people.forEach(function(person) {
-    expectState(state, value, person);
+var expectStates = function(arr, state, value) {
+  arr.forEach(function(model) {
+    expectState(model, state, value);
   });
 };
 
@@ -94,22 +92,8 @@ test('buildURL - should not use plurals', function() {
   equal(adapter.buildURL('person', 1), "/api/v1/person/1/");
 });
 
-test("find - basic payload", function() {
-
-  ajaxResponse({ id: 1, name: "Rails is omakase" });
-  
-  store.find('person', 1).then(async(function(person) {
-    equal(passedUrl, "/api/v1/person/1/");
-    equal(passedVerb, "GET");
-    equal(passedHash, undefined);
-
-    equal(person.get('id'), "1");
-    equal(person.get('name'), "Rails is omakase");
-  }));
-});
-
 test("creating a person makes a POST to /person, with the data hash", function() {
-  ajaxResponse({ objects: [{ id: "1", name: "Tom Dale", tasks: [] }] });
+  ajaxResponse({ id: "1", name: "Tom Dale", tasks: [] });
   var person = store.createRecord('person', { name: "Tom Dale" });
 
   person.save().then(async(function(person) {
@@ -122,6 +106,20 @@ test("creating a person makes a POST to /person, with the data hash", function()
     equal(person.get('name'), "Dat Parley Letter", "the post was updated");    
   }));
   
+});
+
+test("find - basic payload", function() {
+
+  ajaxResponse({ id: 1, name: "Rails is omakase" });
+  
+  store.find('person', 1).then(async(function(person) {
+    equal(passedUrl, "/api/v1/person/1/");
+    equal(passedVerb, "GET");
+    equal(passedHash, undefined);
+
+    equal(person.get('id'), "1");
+    equal(person.get('name'), "Rails is omakase");
+  }));
 });
 
 test("updating a person makes a PUT to /people/:id with the data hash", function() {
@@ -139,38 +137,29 @@ test("updating a person makes a PUT to /people/:id with the data hash", function
 });
 
 test("updates are not required to return data", function() {
-  Ember.run(function() {
-    set(adapter, 'bulkCommit', false);
+  set(adapter, 'bulkCommit', false);
 
-    store.push('person', { id: 1, name: "Yehuda Katz" });
+  store.push('person', { id: 1, name: "Yehuda Katz" });
 
-    person = store.find(Person, 1);
-  });
-
-  expectState('new', false);
-  expectState('loaded');
-  expectState('dirty', false);
-
-  Ember.run(function() {
+  store.find(Person, 1).then(async(function(person) {
+    expectState(person, 'new', false);
+    expectState(person, 'loaded');
+    expectState(person, 'dirty', false);   
+    
     set(person, 'name', "Brohuda Brokatz");
-  });
+    expectState(person, 'dirty');
+    
+    return person.save();
+  })).then(async(function(person) {
+    expectUrl("/api/v1/person/1/", "the plural of the model name with its ID");
+    expectType("PUT");
+    
+    expectState(person, 'saving', false);
 
-  expectState('dirty');
+    equal(person, store.find(Person, 1), "the same person is retrieved by the same ID");
+    equal(get(person, 'name'), "Brohuda Brokatz", "the data is preserved");
+  }));
 
-  Ember.run(function() {
-    store.commit();
-  });
-
-  expectState('saving');
-
-  expectUrl("/api/v1/person/1/", "the plural of the model name with its ID");
-  expectType("PUT");
-
-  ajaxHash.success();
-  expectState('saving', false);
-
-  equal(person, store.find(Person, 1), "the same person is retrieved by the same ID");
-  equal(get(person, 'name'), "Brohuda Brokatz", "the data is preserved");
 });
 
 /* COMMENTED IN EMBER DATA
@@ -190,171 +179,126 @@ test("updating a record with custom primaryKey", function() {
 });*/
 
 
-test("deleting a person makes a DELETE to /people/:id", function() {
-  Ember.run(function() {
+test("deleting a person makes a DELETE to /api/v1/person/:id/", function() {
     set(adapter, 'bulkCommit', false);
 
     store.push('person', { id: 1, name: "Tom Dale" });
 
-    person = store.find(Person, 1);
-  });
+    store.find('person', 1).then(async(function(person) {
+      ajaxResponse();
+      
+      person.deleteRecord();
+      return person.save();
+    })).then(async(function(person) {
+      expectUrl("/api/v1/person/1/", "the plural of the model name with its ID");
+      expectType("DELETE");
 
-  expectState('new', false);
-  expectState('loaded');
-  expectState('dirty', false);
-
-  Ember.run(function() {
-    person.deleteRecord();
-  });
-
-  expectState('dirty');
-  expectState('deleted');
-
-  Ember.run(function() {
-    store.commit();
-  });
-
-  expectState('saving');
-
-  expectUrl("/api/v1/person/1/", "the plural of the model name with its ID");
-  expectType("DELETE");
-
-  ajaxHash.success();
-  expectState('deleted');
+      equal(person.get('isDirty'), false, "the post isn't dirty anymore");
+      equal(person.get('isDeleted'), true, "the post is now deleted");
+    }));
 });
 
-/* COMMENTED IN EMBER DATA
-test("deleting a record with custom primaryKey", function() {
-  Ember.run(function() {
-    set(adapter, 'bulkCommit', false);
-
-    store.load(Role, { _id: 1, name: "Developer" });
-
-    role = store.find(Role, 1);
-
-    role.deleteRecord();
-
-    store.commit();
-  });
-
-  expectUrl("api/v1/role/1/", "the plural of the model name with its ID");
-  ajaxHash.success();
-});*/
-
-test("finding all people makes a GET to api/v1/person/", function() {
+test("finding all people makes a GET to /api/v1/person/", function() {
   
+  ajaxResponse({"objects": [{ id: 1, name: "Yehuda Katz" }]});
   
   store.find('person').then(async(function(people) {
-    
+    expectUrl("/api/v1/person/", "the plural of the model name");
+    expectType("GET");
+    var person = people.objectAt(0);
+
+    expectState(person, 'loaded');
+    expectState(person, 'dirty', false);
+
+    equal(person, store.find(Person, 1), "the record is now in the store, and can be looked up by ID without another Ajax request");
   }));
-
-  expectUrl("/api/v1/person/", "the plural of the model name");
-
-  expectType("GET");
-
-  ajaxHash.success({"objects": [{ id: 1, name: "Yehuda Katz" }]});
-
-  person = people.objectAt(0);
-
-  expectState('loaded');
-  expectState('dirty', false);
-
-  equal(person, store.find(Person, 1), "the record is now in the store, and can be looked up by ID without another Ajax request");
 });
 
 test("since gets set if needed for pagination", function() {
-  Ember.run(function() {
-    people = store.find('person');
-  });
-
-  expectUrl("/api/v1/person/", "the findAll URL");
-  ajaxHash.success({"objects": [{id: 1, name: "Roy"}, {id: 2, name: "Moss"}],
+  
+  ajaxResponse({"objects": [{id: 1, name: "Roy"}, {id: 2, name: "Moss"}],
             "meta": {limit: 2, next: "nextUrl&offset=2", offset: 0, previous: null, total_count: 25}});
-
-  Ember.run(function() {
-    morePeople = store.find(Person);
-  });
-  expectData({offset: '2'});
-  expectUrl("/api/v1/person/", "the findAll URL is the same with the since parameter");
+            
+  store.find('person').then(async(function(people) {
+    expectUrl("/api/v1/person/", "the findAll URL");
+    return store.find('person');
+  })).then(async(function(people) {
+    expectData({offset: '2'});
+    expectUrl("/api/v1/person/", "the findAll URL is the same with the since parameter");
+  }));
+  
 });
 
-test("finding a person by ID makes a GET to api/v1/person/:id", function() {
-  Ember.run(function() {
-    person = store.find('person', 1);
-  });
+test("finding a person by ID makes a GET to /api/v1/person/:id/", function() {
+  ajaxResponse({ id: 1, name: "Yehuda Katz" });
+  
+  store.find('person', 1).then(async(function(person) {
+    expectState(person, 'loaded', false);
+    expectUrl("/api/v1/person/1/", "the model name with the ID requested");
+    expectType("GET");
 
-  expectState('loaded', false);
-  expectUrl("/api/v1/person/1/", "the plural of the model name with the ID requested");
-  expectType("GET");
+    expectState(person, 'loaded');
+    expectState(person, 'dirty', false);
 
-  ajaxHash.success({ id: 1, name: "Yehuda Katz" });
-
-  expectState('loaded');
-  expectState('dirty', false);
-
-  equal(person, store.find(Person, 1), "the record is now in the store, and can be looked up by ID without another Ajax request");
+    equal(person, store.find('person', 1), "the record is now in the store, and can be looked up by ID without another Ajax request");  
+  }));
 });
 
 test("findMany generates a tastypie style url", function() {
-  var adapter = store.get('adapter');
-
-  Ember.run(function() {
-    adapter.findMany(store, 'person', [1,2,3]).then(async(function(person) {
+  ajaxResponse({});
+  store.find('person', [1,2,3]).then(async(function(person) {
       expectUrl("/api/v1/person/set/1;2;3/");
       expectType("GET"); 
-    }));
-  });
+  }));
 });
 
 test("finding many people by a list of IDs", function() {
   var group;
 
-  Ember.run(function() {
-    store.load('group', { id: 1, people: [
+  store.push('group', { id: 1, people: [
       "/api/v1/person/1/",
       "/api/v1/person/2/",
       "/api/v1/person/3/"
-    ]});
+  ]});
 
-    group = store.find(Group, 1);
-  });
+  store.find('group', 1).then(async(function(group) {
+    equal(passedUrl, undefined, "no Ajax calls have been made yet");
 
-  equal(ajaxUrl, undefined, "no Ajax calls have been made yet");
+    var people = get(group, 'people');
 
-  var people = get(group, 'people');
+    equal(get(people, 'length'), 3, "there are three people in the association already");
 
-  equal(get(people, 'length'), 3, "there are three people in the association already");
+    people.forEach(function(person) {
+      equal(get(person, 'isLoaded'), false, "the person is being loaded");
+    });
+    
+    ajaxResponse({"objects":
+      [
+        { id: 1, name: "Rein Heinrichs" },
+        { id: 2, name: "Tom Dale" },
+        { id: 3, name: "Yehuda Katz" }
+      ]});
+    return people;
+  })).then(async(function(people) {
+    expectUrl("/api/v1/person/set/1;2;3/");
+    expectType("GET");
 
-  people.forEach(function(person) {
-    equal(get(person, 'isLoaded'), false, "the person is being loaded");
-  });
+    var rein = people.objectAt(0);
+    equal(get(rein, 'name'), "Rein Heinrichs");
+    equal(get(rein, 'id'), 1);
 
-  expectUrl("/api/v1/person/set/1;2;3/");
-  expectType("GET");
+    var tom = people.objectAt(1);
+    equal(get(tom, 'name'), "Tom Dale");
+    equal(get(tom, 'id'), 2);
 
-  ajaxHash.success({"objects":
-    [
-      { id: 1, name: "Rein Heinrichs" },
-      { id: 2, name: "Tom Dale" },
-      { id: 3, name: "Yehuda Katz" }
-    ]}
-  );
+    var yehuda = people.objectAt(2);
+    equal(get(yehuda, 'name'), "Yehuda Katz");
+    equal(get(yehuda, 'id'), 3);
 
-  var rein = people.objectAt(0);
-  equal(get(rein, 'name'), "Rein Heinrichs");
-  equal(get(rein, 'id'), 1);
-
-  var tom = people.objectAt(1);
-  equal(get(tom, 'name'), "Tom Dale");
-  equal(get(tom, 'id'), 2);
-
-  var yehuda = people.objectAt(2);
-  equal(get(yehuda, 'name'), "Yehuda Katz");
-  equal(get(yehuda, 'id'), 3);
-
-  people.forEach(function(person) {
-    equal(get(person, 'isLoaded'), true, "the person is being loaded");
-  });
+    people.forEach(function(person) {
+      equal(get(person, 'isLoaded'), true, "the person is being loaded");
+    });
+  }));
 });
 
 test("finding people by a query", function() {
@@ -374,9 +318,6 @@ test("finding people by a query", function() {
     deepEqual(passedHash, { page: 1 });
     
     equal(get(people, 'length'), 3, "the people are now loaded");
-
-    equal(person.get('id'), "1");
-    equal(person.get('name'), "Rails is omakase");
     
     rein = people.objectAt(0);
     equal(get(rein, 'name'), "Rein Heinrichs");
@@ -398,96 +339,77 @@ test("finding people by a query", function() {
 });
 
 test("if you specify a server domain then it is prepended onto all URLs", function() {
-  Ember.run(function() {
-    set(adapter, 'serverDomain', 'http://localhost:8000/');
-    equal(adapter.buildURL('person', 1), "http://localhost:8000/api/v1/person/1/");
-  });
+  set(adapter, 'serverDomain', 'http://localhost:8000/');
+  equal(adapter.buildURL('person', 1), "http://localhost:8000/api/v1/person/1/");
 });
 
 test("the adapter can use custom keys", function() {
-  Person = DS.Model.extend({
-    name: DS.attr('string')
-  });
+  env.container.register('serializer:person', DS.DjangoTastypieSerializer.extend({
+    attrs: { name: 'name_custom' }
+  }));
 
-  var Adapter = DS.DjangoTastypieAdapter.extend();
-  Adapter.map('Person', {
-    name: {key: 'name_custom'}
-  });
+  ajaxResponse({ objects: [{ id: 1, name_custom: "Rails is omakase" }, { id: 2, name_custom: "The Parley Letter" }] });
 
-  var adapter = Adapter;
-  var person;
-  Ember.run(function() {
-    person = Person.createRecord({name: "Maurice Moss"});
-  });
+  store.findAll('person').then(async(function(people) {
+    var person1 = store.getById('person', 1),
+        person2 = store.getById('person', 2);
 
-  equal(JSON.stringify(adapter.serialize(person)), '{"name_custom":"Maurice Moss"}');
+    deepEqual(person1.getProperties('id', 'name'), { id: "1", name: "Rails is omakase" }, "Person 1 is loaded");
+    deepEqual(person2.getProperties('id', 'name'), { id: "2", name: "The Parley Letter" }, "Person 2 is loaded");
+
+    equal(people.get('length'), 2, "The posts are in the array");
+    equal(people.get('isLoaded'), true, "The RecordArray is loaded");
+    deepEqual(people.toArray(), [ person1, person2 ], "The correct records are in the array");
+  }));
 });
 
 test("creating an item with a belongsTo relationship urlifies the Resource URI (default key)", function() {
-  Ember.run(function() {
-    store.load('person', {id: 1, name: "Maurice Moss"});
-    person = store.find(Person, 1);
-  });
-
-  expectState('new', false);
-  expectState('loaded');
-  expectState('dirty', false);
-
-  Ember.run(function() {
-    task = Task.createRecord({name: "Get a bike!"});
-  });
-
-  expectState('new', true, task);
-  expectState('dirty', true, task);
-
-  Ember.run(function() {
+  store.push('person', {id: 1, name: "Maurice Moss"});
+  
+  store.find('person', 1).then(async(function(person) {
+    expectState(person, 'new', false);
+    expectState(person, 'loaded');
+    expectState(person, 'dirty', false);
+    
+    var task = store.createRecord('task', {name: "Get a bike!"});
+    expectState(task, 'new', true);
+    expectState(task, 'dirty', true);
     set(task, 'owner', person);
-
-    store.commit();
-  });
-
-  expectUrl('/api/v1/task/', 'create URL');
-  expectType("POST");
-  expectData({ name: "Get a bike!", owner_id: "/api/v1/person/1/"});
-
-  ajaxHash.success({ id: 1, name: "Get a bike!", owner: "/api/v1/person/1/"}, Task);
+    
+    ajaxResponse({ name: "Get a bike!", owner_id: "/api/v1/person/1/"});
+    
+    return task.save();
+  })).then(async(function(task) {
+    expectUrl('/api/v1/task/', 'create URL');
+    expectType("POST");
+    expectData({ name: "Get a bike!", owner_id: "/api/v1/person/1/"});
+  }));
 
 });
 
 test("creating an item with a belongsTo relationship urlifies the Resource URI (custom key)", function() {
+  env.container.register('serializer:task', DS.DjangoTastypieSerializer.extend({
+    attrs: { key: 'owner_custom_key' }
+  }));
 
-  var Adapter, task, adapter;
-
-  Ember.run(function() {
-    DS.DjangoTastypieAdapter.map('Task', {
-      owner: {key: 'owner_custom_key'}
-    });
-
-    store.set('adapter', DS.DjangoTastypieAdapter);
-
-    store.load(Person, {id: 1, name: "Maurice Moss"});
-    person = store.find(Person, 1);
-
-    task = Task.createRecord({name: "Get a bike!"});
-
+  store.push('person', {id: 1, name: "Maurice Moss"});
+  store.find('person', 1).then(async(function (person) {
+    var task = store.createRecord('task', {name: "Get a bike!"});
     task.set('owner', person);
-  });
 
-  expectState('new', true, task);
-  expectState('dirty', true, task);
-
-  Ember.run(function() {
-    store.commit();
-  });
-
-  expectUrl('/api/v1/task/', 'create URL');
-  expectType("POST");
-  expectData({ name: "Get a bike!", owner_custom_key: "/api/v1/person/1/"});
-
-  ajaxHash.success({ id: 1, name: "Get a bike!", owner: "/api/v1/person/1/"}, Task);
-
-  expectState('new', false, task);
-  expectState('dirty', false, task);
+    expectState(task, 'new', true);
+    expectState(task, 'dirty', true);
+    
+    ajaxResponse({ name: "Get a bike!", owner_custom_key: "/api/v1/person/1/"});
+    return task.save();
+  })).then(async(function (task) {
+    expectUrl('/api/v1/task/', 'create URL');
+    expectType("POST");
+    expectData({ name: "Get a bike!", owner_custom_key: "/api/v1/person/1/"});
+    
+    expectState(task, 'new', false);
+    expectState(task, 'dirty', false);
+  }));
 });
 
 test("adding hasMany relationships parses the Resource URI (default key)", function() {
@@ -500,15 +422,14 @@ test("adding hasMany relationships parses the Resource URI (default key)", funct
     return "Person";
   };
 
-  equal(true, true);
-  store.push(Person, {id: 1, name: "Maurice Moss"});
-  store.push(Person, {id: 2, name: "Roy"});
-  store.push(Group, {id: 1, name: "Team"});
+  store.push('person', {id: 1, name: "Maurice Moss"});
+  store.push('person', {id: 2, name: "Roy"});
+  store.push('group', {id: 1, name: "Team"});
 
-  var moss = store.find(Person, 1);
-  var roy = store.find(Person, 2);
+  var moss = store.find('person', 1);
+  var roy = store.find('person', 2);
 
-  group = store.find(Group, 1);
+  var group = store.find('group', 1);
   get(group, 'people').pushObject(moss);
   get(group, 'people').pushObject(roy);
 
@@ -669,9 +590,9 @@ test("can load embedded hasMany records with camelCased properties", function() 
 
   adapter.didFindRecord(store, Person, data);
 
-  var moss = store.find(Person, 1);
-  var german = store.find(Task, 1);
-  var friendface = store.find(Task, 2);
+  var moss = store.find('person', 1);
+  var german = store.find('task', 1);
+  var friendface = store.find('task', 2);
   equal("Maurice Moss", moss.get('name'));
   equal("Learn German Kitchen", german.get('name'));
   equal("Join Friendface", friendface.get('name'));

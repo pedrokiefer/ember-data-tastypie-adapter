@@ -1,5 +1,8 @@
 var get = Ember.get, set = Ember.set;
 
+var forEach = Ember.ArrayPolyfills.forEach;
+var map = Ember.ArrayPolyfills.map;
+
 DS.DjangoTastypieSerializer = DS.RESTSerializer.extend({
 
   init: function() {
@@ -61,58 +64,58 @@ DS.DjangoTastypieSerializer = DS.RESTSerializer.extend({
     hash[key] = serializedValues;
   },
 
-  /**
-    Tastypie adapter does not support the sideloading feature
-    */
-  extract: function(loader, json, type, record) {
-    this.extractMeta(loader, type, json);
-    this.sideload(loader, type, json);
+  extractSingle: function(store, primaryType, payload, recordId, requestType) {
+    console.log("Store: ", store);
+    console.log("Type: ", primaryType.typeKey);
+    console.log("Payload: ", payload);
+    console.log("RecordID: ", recordId);
+    console.log("requestType: ", requestType);
+    
+    var primaryTypeName = primaryType.typeKey,
+        primaryRecord;
+    
+    var typeSerializer = store.serializerFor(primaryTypeName);
+    var hash = typeSerializer.normalize(primaryTypeName, payload);
+    return hash;
+  },
+  
+  extractMany: function(store, primaryType, payload) {
+    console.log("Store: ", store);
+    console.log("Type: ", primaryType);
+    console.log("Payload: ", payload);
+    
+    var primaryTypeName = primaryType.typeKey,
+        primaryArray;
+        
+    var typeName = this.typeForRoot(primaryTypeName),
+        type = store.modelFor(typeName),
+        typeSerializer = store.serializerFor(type);
 
-    if (json) {
-      if (record) { loader.updateId(record, json); }
-      this.extractRecordRepresentation(loader, type, json);
+      /*jshint loopfunc:true*/
+      var normalizedArray = map.call(payload, function(hash) {
+        return typeSerializer.normalize(type, hash);
+      }, this);
+
+        primaryArray = normalizedArray;
+
+    return primaryArray;
+  },
+
+  extractMeta: function(store, type, payload) {
+    var data = payload, value;
+
+    if(payload && payload['meta']){
+      data = payload['meta'];
+
+      this.metadataMapping.forEach(function(property, key){
+        if(value = data[property]){
+          store.metaForType(type, key, value);
+        }
+      });
+      delete payload.meta;
     }
   },
 
-  extractMany: function(loader, json, type, records) {
-    this.sideload(loader, type, json);
-    this.extractMeta(loader, type, json);
-
-    if (json.objects) {
-      var objects = json.objects, references = [];
-      if (records) { records = records.toArray(); }
-
-      for (var i = 0; i < objects.length; i++) {
-        if (records) { loader.updateId(records[i], objects[i]); }
-        var reference = this.extractRecordRepresentation(loader, type, objects[i]);
-        references.push(reference);
-      }
-
-      loader.populateArray(references);
-    }
-  },
-
-  extractMeta: function(loader, type, json) {
-    var meta = this.configOption(type, 'meta'),
-        data = json, value;
-
-    if(meta && json[meta]){
-      data = json[meta];
-    }
-
-    this.metadataMapping.forEach(function(property, key){
-      if(value = data[property]){
-        loader.metaForType(type, key, value);
-      }
-    });
-  },
-
-  /**
-   Tastypie default does not support sideloading
-   */
-  sideload: function(loader, type, json, root) {
-
-  },
 
   /**
     ASSOCIATIONS: DESERIALIZATION

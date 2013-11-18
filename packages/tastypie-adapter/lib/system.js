@@ -1,0 +1,1 @@
+require('tastypie-adapter/system/tastypie_adapter');

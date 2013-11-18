@@ -1,14 +1,9 @@
 var get = Ember.get, set = Ember.set;
 
-DS.DjangoTastypieSerializer = DS.JSONSerializer.extend({
+DS.DjangoTastypieSerializer = DS.RESTSerializer.extend({
 
   init: function() {
-    this._super();
-
-    this.configure({
-      meta: 'meta',
-      since: 'next'
-    });
+    this._super.apply(this, arguments);
   },
 
   getItemUrl: function(meta, id){
@@ -50,7 +45,7 @@ DS.DjangoTastypieSerializer = DS.JSONSerializer.extend({
 
     key = this.keyForHasMany(relationship.type, key);
 
-    value = record.get(key) || [];
+    var value = record.get(key) || [];
 
     value.forEach(function(item) {
       if (embedded === 'always') {

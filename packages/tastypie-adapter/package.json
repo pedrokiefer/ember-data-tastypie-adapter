@@ -1,0 +1,24 @@
+{
+  "name": "tastypie-adapter",
+  "summary": "TastpieAdapter for Ember Data",
+  "description": "",
+  "homepage": "http://github.com/pedrokiefer/ember-data-tastypie-adapter",
+  "author": ["Pedro Kiefer"],
+  "version": "0.1.0-beta",
+
+  "directories":{
+    "lib": "lib"
+  },
+
+  "dependencies": {
+    "ember-runtime": "1.0.0",
+    "ember-data": "1.0.0"
+  },
+
+  "bpm:build": {
+    "bpm_lib.js": {
+      "files": ["lib"],
+      "modes": "*"
+    }
+  }
+}

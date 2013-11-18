@@ -1,20 +1,44 @@
-require 'json'
-require 'rake-pipeline-web-filters'
+require 'ember-dev'
+distros = {
+  :full    => %w(tastypie-adapter)
+}
 
-output 'dist'
-input 'packages' do
+#MEGAHAX
+ember_spade_postprocess = "filter EmberAddMicroLoader, :global => true"
 
-  match '*/lib/tastypie_adapter.js' do
-    if ENV['RAKEP_MODE'] == 'production'
-      uglify
+instance_eval File.read(EmberDev.support_path.join('Assetfile'))
+
+distros.each do |name, modules|
+  name = "tastypie-adapter"
+
+  input "dist/modules" do
+    module_paths = modules.map{|m| "#{m}.js" }
+    match "{#{module_paths.join(',')}}" do
+      concat(module_paths){ ["#{name}.js", "#{name}.prod.js"] }
+      filter EmberAddMicroLoader
     end
-    concat ['tastypie_adapter.js'], 'tastypie_adapter.js'
-  end
-  match '*/lib/tastypie_serializer.js' do
-    if ENV['RAKEP_MODE'] == 'production'
-      uglify
-    end
-    concat ['tastypie_serializer.js'], 'tastypie_adapter.js'
-  end
 
+    match "#{name}.js" do
+      filter VersionInfo
+      filter EmberLicenseFilter
+      filter AddProjectVersionNumber
+    end
+
+    # Strip dev code
+    match "#{name}.prod.js" do
+      filter VersionInfo
+      filter EmberLicenseFilter
+      filter AddProjectVersionNumber
+      filter(EmberStripDebugMessagesFilter) { ["#{name}.prod.js", "min/#{name}.js"] }
+    end
+
+    # Minify
+    match "min/#{name}.js" do
+      uglify{ "#{name}.min.js" }
+      filter VersionInfo
+      filter EmberLicenseFilter
+    end
+  end
 end
+
+# vim: filetype=ruby

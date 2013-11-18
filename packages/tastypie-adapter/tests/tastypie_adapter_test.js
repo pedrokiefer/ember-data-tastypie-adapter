@@ -1,108 +1,71 @@
 var get = Ember.get, set = Ember.set;
 
-var adapter, store, ajaxUrl, ajaxType, ajaxHash;
-var Person, person, people;
-var Role, role, roles;
-var Group, group;
-var Task, task;
-
-var TestAdapter = DS.DjangoTastypieAdapter.extend({
-  ajax: function(url, type, hash) {
-    var adapter = this;
-
-    return new Ember.RSVP.Promise(function(resolve, reject) {
-      hash = hash || {};
-      hash.url = url;
-      hash.type = type;
-      hash.dataType = 'json';
-      hash.context = adapter;
-
-      ajaxUrl = url;
-      ajaxType = type;
-      ajaxHash = hash;
-
-      hash.success = function(json) {
-        Ember.run(function() {
-          resolve(json);
-        });
-      };
-
-      hash.error = function(jqXHR, textStatus, errorThrown) {
-        Ember.run(null, reject, errorThrown);
-      };
-    });
-  }
-});
+var env, store, adapter;
+var originalAjax, passedUrl, passedVerb, passedHash;
+var Person, person, people, Role, Group, group, Task, task;
 
 module("Django Tastypie Adapter", {
   setup: function() {
-    ajaxUrl = undefined;
-    ajaxType = undefined;
-    ajaxHash = undefined;
-
-    adapter = TestAdapter.create();
-
-    store = DS.Store.create({
-      adapter: adapter
-    });
-
     Person = DS.Model.extend({
       name: DS.attr('string'),
-      tasks: DS.hasMany('Task')
+      tasks: DS.hasMany('task')
     });
-
-    Person.toString = function() {
-      return "App.Person";
-    };
 
     Group = DS.Model.extend({
       name: DS.attr('string'),
-      people: DS.hasMany('Person')
+      people: DS.hasMany('person')
     });
-
-    Group.toString = function() {
-      return "App.Group";
-    };
 
     Role = DS.Model.extend({
       name: DS.attr('string'),
       primaryKey: '_id'
     });
 
-    Role.toString = function() {
-      return "App.Role";
-    };
-
     Task = DS.Model.extend({
       name: DS.attr('string'),
-      owner: DS.belongsTo('Person')
+      owner: DS.belongsTo('person')
     });
-
-    Task.toString = function() {
-      return "App.Task";
-    };
-  },
-
-  teardown: function() {
-    Ember.run(function() {
-      adapter.destroy();
-      store.destroy();
-
-      if (person) { person.destroy(); }
+    
+    env = setupStore({
+      person: Person,
+      group: Group,
+      role: Role,
+      task: Task,
+      adapter: DS.DjangoTastypieAdapter
     });
+    
+    store = env.store;
+    adapter = env.adapter;
+    
+    env.store.modelFor('person');
+    env.store.modelFor('group');
+    env.store.modelFor('role');
+    env.store.modelFor('task');
+    
+    passedUrl = passedVerb = passedHash = null;
   }
 });
 
+function ajaxResponse(value) {
+  adapter.ajax = function(url, verb, hash) {
+    passedUrl = url;
+    passedVerb = verb;
+    passedHash = hash;
+
+    return Ember.RSVP.resolve(value);
+  };
+}
+
 var expectUrl = function(url, desc) {
-  equal(ajaxUrl, url, "the URL is " + desc);
+  equal(passedUrl, url, "the URL is " + desc);
 };
 
 var expectType = function(type) {
-  equal(ajaxType, type, "the HTTP method is " + type);
+  equal(passedVerb, type, "the HTTP method is " + type);
 };
 
 var expectData = function(hash) {
-  deepEqual(hash, ajaxHash.data, "the hash was passed along");
+  deepEqual(hash, passedHash.data, "the hash was passed along");
 };
 
 var expectState = function(state, value, p) {
@@ -120,76 +83,66 @@ var expectStates = function(state, value) {
   });
 };
 
+test("can create a record", function() {
+    var record = store.createRecord('person');
+    set(record, 'name', 'bar');
+
+    equal(get(record, 'name'), 'bar', "property was set on the record");
+});
+
+test('buildURL - should not use plurals', function() {
+  equal(adapter.buildURL('person', 1), "/api/v1/person/1/");
+});
+
+test("find - basic payload", function() {
+
+  ajaxResponse({ id: 1, name: "Rails is omakase" });
+  
+  store.find('person', 1).then(async(function(person) {
+    equal(passedUrl, "/api/v1/person/1/");
+    equal(passedVerb, "GET");
+    equal(passedHash, undefined);
+
+    equal(person.get('id'), "1");
+    equal(person.get('name'), "Rails is omakase");
+  }));
+});
+
 test("creating a person makes a POST to /person, with the data hash", function() {
-  Ember.run(function() {
-    set(adapter, 'bulkCommit', false);
-    person = store.createRecord(Person, { name: "Tom Dale" });
-  });
+  ajaxResponse({ objects: [{ id: "1", name: "Tom Dale", tasks: [] }] });
+  var person = store.createRecord('person', { name: "Tom Dale" });
 
-  expectState('new');
+  person.save().then(async(function(person) {
+    equal(passedUrl, "/api/v1/person/");
+    equal(passedVerb, "POST");
+    deepEqual(passedHash.data, { name: "Tom Dale", tasks: [] });
 
-  Ember.run(function() {
-    store.commit();
-  });
-
-  expectState('saving');
-
-  expectUrl("/api/v1/person/", "the collection is the same as the model name");
-  expectType("POST");
-  expectData({ name: "Tom Dale", tasks: [] });
-
-  ajaxHash.success({ id: 1, name: "Tom Dale" });
-  expectState('saving', false);
-
-  Ember.run(function() {
-    person = store.find(Person, 1);
-  });
-
-  equal(person.get('name'), "Tom Dale", "it is now possible to retrieve the person by the ID supplied");
+    equal(person.get('id'), "1", "the post has the updated ID");
+    equal(person.get('isDirty'), false, "the post isn't dirty anymore");
+    equal(person.get('name'), "Dat Parley Letter", "the post was updated");    
+  }));
+  
 });
 
 test("updating a person makes a PUT to /people/:id with the data hash", function() {
-  Ember.run(function() {
-    set(adapter, 'bulkCommit', false);
+  set(adapter, 'bulkCommit', false);
 
-    store.load(Person, { id: 1, name: "Yehuda Katz" });
+  store.push('person', { id: 1, name: "Yehuda Katz" });
 
-    person = store.find(Person, 1);
-  });
-
-  expectState('new', false);
-  expectState('loaded');
-  expectState('dirty', false);
-
-  Ember.run(function() {
+  store.find('person', 1).then(async(function(person) {
     set(person, 'name', "Brohuda Brokatz");
-  });
-
-  expectState('dirty');
-  Ember.run(function() {
-    store.commit();
-  });
-  expectState('saving');
-
-  expectUrl("/api/v1/person/1/", "the plural of the model name with its ID");
-  expectType("PUT");
-
-  ajaxHash.success({ id: 1, name: "Brohuda Brokatz" });
-  expectState('saving', false);
-
-  Ember.run(function() {
-    person = store.find(Person, 1);
-  });
-
-  equal(get(person, 'name'), "Brohuda Brokatz", "the hash should be updated");
+    person.save().then(async(function() {
+      equal(1,1);
+    }));
+  }));
+  
 });
-
 
 test("updates are not required to return data", function() {
   Ember.run(function() {
     set(adapter, 'bulkCommit', false);
 
-    store.load(Person, { id: 1, name: "Yehuda Katz" });
+    store.push('person', { id: 1, name: "Yehuda Katz" });
 
     person = store.find(Person, 1);
   });
@@ -241,7 +194,7 @@ test("deleting a person makes a DELETE to /people/:id", function() {
   Ember.run(function() {
     set(adapter, 'bulkCommit', false);
 
-    store.load(Person, { id: 1, name: "Tom Dale" });
+    store.push('person', { id: 1, name: "Tom Dale" });
 
     person = store.find(Person, 1);
   });
@@ -289,9 +242,11 @@ test("deleting a record with custom primaryKey", function() {
 });*/
 
 test("finding all people makes a GET to api/v1/person/", function() {
-  Ember.run(function() {
-    people = store.find(Person);
-  });
+  
+  
+  store.find('person').then(async(function(people) {
+    
+  }));
 
   expectUrl("/api/v1/person/", "the plural of the model name");
 
@@ -309,7 +264,7 @@ test("finding all people makes a GET to api/v1/person/", function() {
 
 test("since gets set if needed for pagination", function() {
   Ember.run(function() {
-    people = store.find(Person);
+    people = store.find('person');
   });
 
   expectUrl("/api/v1/person/", "the findAll URL");
@@ -325,7 +280,7 @@ test("since gets set if needed for pagination", function() {
 
 test("finding a person by ID makes a GET to api/v1/person/:id", function() {
   Ember.run(function() {
-    person = store.find(Person, 1);
+    person = store.find('person', 1);
   });
 
   expectState('loaded', false);
@@ -344,17 +299,18 @@ test("findMany generates a tastypie style url", function() {
   var adapter = store.get('adapter');
 
   Ember.run(function() {
-    adapter.findMany(store, Person, [1,2,3]);
+    adapter.findMany(store, 'person', [1,2,3]).then(async(function(person) {
+      expectUrl("/api/v1/person/set/1;2;3/");
+      expectType("GET"); 
+    }));
   });
-  expectUrl("/api/v1/person/set/1;2;3/");
-  expectType("GET");
 });
 
 test("finding many people by a list of IDs", function() {
   var group;
 
   Ember.run(function() {
-    store.load(Group, { id: 1, people: [
+    store.load('group', { id: 1, people: [
       "/api/v1/person/1/",
       "/api/v1/person/2/",
       "/api/v1/person/3/"
@@ -403,62 +359,48 @@ test("finding many people by a list of IDs", function() {
 
 test("finding people by a query", function() {
   var people, rein, tom, yehuda;
-
-  Ember.run(function() {
-    people = store.find(Person, { page: 1 });
-  });
-
-  equal(get(people, 'length'), 0, "there are no people yet, as the query has not returned");
-
-  expectUrl("/api/v1/person/", "the collection at the plural of the model name");
-  expectType("GET");
-  expectData({ page: 1 });
-
-  ajaxHash.success({
+  
+  ajaxResponse({
     objects: [
       { id: 1, name: "Rein Heinrichs" },
       { id: 2, name: "Tom Dale" },
       { id: 3, name: "Yehuda Katz" }
     ]
   });
+  
+  store.find('person', {page: 1}).then(async(function(people) {
+    equal(passedUrl, "/api/v1/person/");
+    equal(passedVerb, "GET");
+    deepEqual(passedHash, { page: 1 });
+    
+    equal(get(people, 'length'), 3, "the people are now loaded");
 
-  equal(get(people, 'length'), 3, "the people are now loaded");
-
-  Ember.run(function() {
+    equal(person.get('id'), "1");
+    equal(person.get('name'), "Rails is omakase");
+    
     rein = people.objectAt(0);
-  });
-
-  equal(get(rein, 'name'), "Rein Heinrichs");
-  equal(get(rein, 'id'), 1);
-
-  Ember.run(function() {
+    equal(get(rein, 'name'), "Rein Heinrichs");
+    equal(get(rein, 'id'), 1);
+    
     tom = people.objectAt(1);
-  });
-
-  equal(get(tom, 'name'), "Tom Dale");
-  equal(get(tom, 'id'), 2);
-
-  Ember.run(function() {
+    equal(get(tom, 'name'), "Tom Dale");
+    equal(get(tom, 'id'), 2);
+    
     yehuda = people.objectAt(2);
-  });
-
-  equal(get(yehuda, 'name'), "Yehuda Katz");
-  equal(get(yehuda, 'id'), 3);
-
-  people.forEach(function(person) {
-    equal(get(person, 'isLoaded'), true, "the person is being loaded");
-  });
+    equal(get(yehuda, 'name'), "Yehuda Katz");
+    equal(get(yehuda, 'id'), 3);
+    
+    people.forEach(function(person) {
+      equal(get(person, 'isLoaded'), true, "the person is being loaded");
+    });
+    
+  }));
 });
 
 test("if you specify a server domain then it is prepended onto all URLs", function() {
   Ember.run(function() {
     set(adapter, 'serverDomain', 'http://localhost:8000/');
-    person = store.find(Person, 1);
-  });
-  expectUrl("http://localhost:8000/api/v1/person/1/", "the namespace, followed by by the plural of the model name and the id");
-
-  Ember.run(function() {
-    store.load(Person, { id: 1 });
+    equal(adapter.buildURL('person', 1), "http://localhost:8000/api/v1/person/1/");
   });
 });
 
@@ -467,12 +409,12 @@ test("the adapter can use custom keys", function() {
     name: DS.attr('string')
   });
 
-  var Adapter = TestAdapter.extend();
+  var Adapter = DS.DjangoTastypieAdapter.extend();
   Adapter.map('Person', {
     name: {key: 'name_custom'}
   });
 
-  var adapter = Adapter.create();
+  var adapter = Adapter;
   var person;
   Ember.run(function() {
     person = Person.createRecord({name: "Maurice Moss"});
@@ -483,7 +425,7 @@ test("the adapter can use custom keys", function() {
 
 test("creating an item with a belongsTo relationship urlifies the Resource URI (default key)", function() {
   Ember.run(function() {
-    store.load(Person, {id: 1, name: "Maurice Moss"});
+    store.load('person', {id: 1, name: "Maurice Moss"});
     person = store.find(Person, 1);
   });
 
@@ -517,12 +459,11 @@ test("creating an item with a belongsTo relationship urlifies the Resource URI (
   var Adapter, task, adapter;
 
   Ember.run(function() {
-    TestAdapter.map('Task', {
+    DS.DjangoTastypieAdapter.map('Task', {
       owner: {key: 'owner_custom_key'}
     });
 
-    adapter = TestAdapter.create();
-    store.set('adapter', adapter);
+    store.set('adapter', DS.DjangoTastypieAdapter);
 
     store.load(Person, {id: 1, name: "Maurice Moss"});
     person = store.find(Person, 1);
@@ -560,9 +501,9 @@ test("adding hasMany relationships parses the Resource URI (default key)", funct
   };
 
   equal(true, true);
-  store.load(Person, {id: 1, name: "Maurice Moss"});
-  store.load(Person, {id: 2, name: "Roy"});
-  store.load(Group, {id: 1, name: "Team"});
+  store.push(Person, {id: 1, name: "Maurice Moss"});
+  store.push(Person, {id: 2, name: "Roy"});
+  store.push(Group, {id: 1, name: "Team"});
 
   var moss = store.find(Person, 1);
   var roy = store.find(Person, 2);
@@ -584,14 +525,13 @@ test("can load embedded hasMany records", function() {
 
   var Adapter;
 
-  Adapter = TestAdapter.extend({});
+  Adapter = DS.DjangoTastypieAdapter.extend({});
 
   Adapter.map('Person', {
     tasks: {embedded: 'load'}
   });
 
-  adapter = Adapter.create();
-  store.set('adapter', adapter);
+  store.set('adapter', Adapter);
 
 
   var data = {
@@ -626,14 +566,13 @@ test("can load embedded belongTo records", function() {
 
   var Adapter;
 
-  Adapter = TestAdapter.extend({});
+  Adapter = DS.DjangoTastypieAdapter.extend({});
 
   Adapter.map('Task', {
     owner: {embedded: 'load', key: 'owner'}
   });
 
-  adapter = Adapter.create();
-  store.set('adapter', adapter);
+  store.set('adapter', Adapter);
 
 
   var data = {
@@ -660,14 +599,13 @@ test("can load embedded belongTo records in a find response", function() {
   var Adapter,
       recordArray;
 
-  Adapter = TestAdapter.extend({});
+  Adapter = DS.DjangoTastypieAdapter.extend({});
 
   Adapter.map('Task', {
     owner: {embedded: 'load', key: 'owner'}
   });
 
-  adapter = Adapter.create();
-  store.set('adapter', adapter);
+  store.set('adapter', Adapter);
 
 
   var data = {
@@ -699,7 +637,7 @@ test("can load embedded hasMany records with camelCased properties", function() 
 
   var Adapter;
 
-  Adapter = TestAdapter.extend({});
+  Adapter = DS.DjangoTastypieAdapter.extend({});
 
   Person = DS.Model.extend({
     name: DS.attr('string'),
@@ -711,9 +649,7 @@ test("can load embedded hasMany records with camelCased properties", function() 
     tasksToDo: {embedded: 'load', key: 'tasksToDo'}
   });
 
-  adapter = Adapter.create();
-  store.set('adapter', adapter);
-
+  store.set('adapter', Adapter);
 
   var data = {
     "id": 1,

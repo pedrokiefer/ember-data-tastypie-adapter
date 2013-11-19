@@ -41,9 +41,17 @@ DS.DjangoTastypieAdapter = DS.RESTAdapter.extend({
     return type;
   },
   
-  buildURL: function(record, suffix) {
-    var url = this._super(record, suffix);
-
+  buildURL: function(type, id) {
+    
+    if (typeof id === 'string') {
+      var ids = id.split(',');
+      if (ids.length > 1) {
+        id = "set/" + ids.join(";") + '/';
+      }
+    }
+    
+    var url = this._super(type, id);
+    
     // Add the trailing slash to avoid setting requirement in Django.settings
     if (url.charAt(url.length -1) !== '/') {
       url += '/';
@@ -58,18 +66,14 @@ DS.DjangoTastypieAdapter = DS.RESTAdapter.extend({
   },
 
   findMany: function(store, type, ids) {
-    var url,
-        root = this.rootForType(type),
-        adapter = this;
-
-    ids = this.serializeIds(ids);
+    var url;
 
     // FindMany array through subset of resources
     if (ids instanceof Array) {
       ids = "set/" + ids.join(";") + '/';
     }
 
-    url = this.buildURL(root);
+    url = this.buildURL(type.typeKey);
     url += ids;
 
     return this.ajax(url, "GET");

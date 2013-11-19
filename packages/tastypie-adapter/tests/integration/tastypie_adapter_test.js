@@ -45,8 +45,8 @@ module("integration/django_tastypie_adapter - DjangoTastypieAdapter", {
     env.container.register('serializer:application', DS.DjangoTastypieSerializer);
     env.container.register('serializer:_djangoTastypie', DS.DjangoTastypieSerializer);
     env.container.register('adapter:_djangoTastypie', DS.DjangoTastypieAdapter);
-    env.amsSerializer = env.container.lookup("serializer:_djangoTastypie");
-    env.amsAdapter    = env.container.lookup("adapter:_djangoTastypie");
+    env.dtSerializer = env.container.lookup("serializer:_djangoTastypie");
+    env.dtAdapter    = env.container.lookup("adapter:_djangoTastypie");
     
     passedUrl = passedVerb = passedHash = null;
   }

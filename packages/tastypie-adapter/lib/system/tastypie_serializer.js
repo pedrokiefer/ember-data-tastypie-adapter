@@ -74,12 +74,23 @@ DS.DjangoTastypieSerializer = DS.RESTSerializer.extend({
     return this.normalize(primaryType, payload);
   },
   
-  extractMany: function(store, primaryType, payload) {
+  extractArray: function(store, primaryType, payload) {
     console.log("Store: ", store);
     console.log("Type: ", primaryType);
     console.log("Payload: ", payload);
+    var references = [];
     
-    return this._super(store, primaryType, payload);
+    if (payload.objects) {
+      var objects = payload.objects;
+      
+      for (var i = 0; i < objects.length; i++) {
+        var reference = this.normalize(primaryType, objects[i]);
+        references.push(reference);
+      }
+      delete payload.objects;
+    }
+    
+    return references;
   },
 
   extractMeta: function(store, type, payload) {

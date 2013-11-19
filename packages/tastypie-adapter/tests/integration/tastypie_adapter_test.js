@@ -1,10 +1,10 @@
-var get = Ember.get, set = Ember.set;
+var get = Ember.get, set = Ember.set, hash = Ember.RSVP.hash;
 
 var env, store, adapter;
 var originalAjax, passedUrl, passedVerb, passedHash;
 var Person, Role, Group, Task;
 
-module("Django Tastypie Adapter", {
+module("integration/django_tastypie_adapter - DjangoTastypieAdapter", {
   setup: function() {
     Person = DS.Model.extend({
       name: DS.attr('string'),
@@ -42,6 +42,12 @@ module("Django Tastypie Adapter", {
     env.store.modelFor('role');
     env.store.modelFor('task');
     
+    env.container.register('serializer:application', DS.DjangoTastypieSerializer);
+    env.container.register('serializer:_djangoTastypie', DS.DjangoTastypieSerializer);
+    env.container.register('adapter:_djangoTastypie', DS.DjangoTastypieAdapter);
+    env.amsSerializer = env.container.lookup("serializer:_djangoTastypie");
+    env.amsAdapter    = env.container.lookup("adapter:_djangoTastypie");
+    
     passedUrl = passedVerb = passedHash = null;
   }
 });
@@ -65,7 +71,7 @@ var expectType = function(type) {
 };
 
 var expectData = function(hash) {
-  deepEqual(hash, passedHash.data, "the hash was passed along");
+  deepEqual(passedHash.data, hash, "the hash was passed along");
 };
 
 var expectState = function(model, state, value) {
@@ -93,9 +99,9 @@ test('buildURL - should not use plurals', function() {
 });
 
 test("creating a person makes a POST to /person, with the data hash", function() {
-  ajaxResponse({ id: "1", name: "Tom Dale", tasks: [] });
   var person = store.createRecord('person', { name: "Tom Dale" });
-
+  ajaxResponse({ id: "1", name: "Tom Dale", tasks: [] });
+  
   person.save().then(async(function(person) {
     equal(passedUrl, "/api/v1/person/");
     equal(passedVerb, "POST");
@@ -129,9 +135,11 @@ test("updating a person makes a PUT to /people/:id with the data hash", function
 
   store.find('person', 1).then(async(function(person) {
     set(person, 'name', "Brohuda Brokatz");
-    person.save().then(async(function() {
-      equal(1,1);
-    }));
+    
+    ajaxResponse();
+    return person.save();
+  })).then(async(function() {
+    equal(1,1);
   }));
   
 });
@@ -140,15 +148,20 @@ test("updates are not required to return data", function() {
   set(adapter, 'bulkCommit', false);
 
   store.push('person', { id: 1, name: "Yehuda Katz" });
+  
+  var _person;
 
-  store.find(Person, 1).then(async(function(person) {
+  store.find('person', 1).then(async(function(person) {
     expectState(person, 'new', false);
     expectState(person, 'loaded');
     expectState(person, 'dirty', false);   
     
+    _person = person;
+    
     set(person, 'name', "Brohuda Brokatz");
     expectState(person, 'dirty');
     
+    ajaxResponse();
     return person.save();
   })).then(async(function(person) {
     expectUrl("/api/v1/person/1/", "the plural of the model name with its ID");
@@ -156,7 +169,7 @@ test("updates are not required to return data", function() {
     
     expectState(person, 'saving', false);
 
-    equal(person, store.find(Person, 1), "the same person is retrieved by the same ID");
+    equal(_person, store.getById('person', 1), "the same person is retrieved by the same ID");
     equal(get(person, 'name'), "Brohuda Brokatz", "the data is preserved");
   }));
 
@@ -245,7 +258,7 @@ test("finding a person by ID makes a GET to /api/v1/person/:id/", function() {
 });
 
 test("findMany generates a tastypie style url", function() {
-  ajaxResponse({});
+  ajaxResponse();
   store.find('person', [1,2,3]).then(async(function(person) {
       expectUrl("/api/v1/person/set/1;2;3/");
       expectType("GET"); 
@@ -426,35 +439,32 @@ test("adding hasMany relationships parses the Resource URI (default key)", funct
   store.push('person', {id: 2, name: "Roy"});
   store.push('group', {id: 1, name: "Team"});
 
-  var moss = store.find('person', 1);
-  var roy = store.find('person', 2);
-
-  var group = store.find('group', 1);
-  get(group, 'people').pushObject(moss);
-  get(group, 'people').pushObject(roy);
-
-  Ember.run(store, store.commit);
-
-  // HasMany updates through the belongsTo component
-  expectUrl('/api/v1/person/2/', 'modify Group URL');
-  expectType("PUT");
-  expectData({name: "Roy", group_id: '/api/v1/group/1/' });
-
+  hash({ moss: store.find('person', 1), 
+         roy: store.find('person', 2), 
+         group: store.find('group', 1) }).then(async(function(objects) {
+    var group = objects.group;
+    
+    get(group, 'people').pushObject(objects.moss);
+    get(group, 'people').pushObject(objects.roy);
+    
+    ajaxResponse();
+    return store.save();
+  })).then(async(function(data) {
+    expectUrl('/api/v1/person/2/', 'modify Group URL');
+    expectType("PUT");
+    expectData({name: "Roy", group_id: '/api/v1/group/1/' });
+  }));
+  
 });
 
 test("can load embedded hasMany records", function() {
-
-  var Adapter;
-
-  Adapter = DS.DjangoTastypieAdapter.extend({});
-
-  Adapter.map('Person', {
-    tasks: {embedded: 'load'}
-  });
-
-  store.set('adapter', Adapter);
-
-
+  
+  env.container.register('serializer:person', DS.DjangoTastypieSerializer.extend({
+    attrs: {
+      tasks: { embedded: 'load' }
+    }
+  }));
+  
   var data = {
     "id": 1,
     "name": "Maurice Moss",
@@ -471,30 +481,28 @@ test("can load embedded hasMany records", function() {
     "resource_uri": "\/api\/v1\/person\/1\/"
   };
 
-  adapter.didFindRecord(store, Person, data);
+  store.push('person', data);
 
-  var moss = store.find(Person, 1);
-  var german = store.find(Task, 1);
-  var friendface = store.find(Task, 2);
-  equal("Maurice Moss", moss.get('name'));
-  equal("Learn German Kitchen", german.get('name'));
-  equal("Join Friendface", friendface.get('name'));
-  equal(2, moss.get('tasks.length'));
+  store.find('person', 1).then(async(function(moss) {
+    equal("Maurice Moss", moss.get('name'));
+    equal(2, moss.get('tasks.length'));
+    
+    var german = store.getById('task', 1),
+        friendface = store.getById('task', 2);
+    
+    equal("Learn German Kitchen", german.get('name'));
+    equal("Join Friendface", friendface.get('name'));
+  }));  
 });
 
 
 test("can load embedded belongTo records", function() {
 
-  var Adapter;
-
-  Adapter = DS.DjangoTastypieAdapter.extend({});
-
-  Adapter.map('Task', {
-    owner: {embedded: 'load', key: 'owner'}
-  });
-
-  store.set('adapter', Adapter);
-
+  env.container.register('serializer:task', DS.DjangoTastypieSerializer.extend({
+    attrs: {
+      owner: { embedded: 'load', key: 'owner' }
+    }
+  }));
 
   var data = {
     "id": 1,
@@ -507,27 +515,24 @@ test("can load embedded belongTo records", function() {
     "resource_uri": "\/api\/v1\/task\/1\/"
   };
 
-  adapter.didFindRecord(store, Task, data);
+  store.push('task', data);
 
   var moss = store.find(Person, 1);
-  var bike = store.find(Task, 1);
-  equal("Maurice Moss", moss.get('name'));
-  equal("Get a bike!", bike.get('name'));
+  store.find('task', 1).then(async(function(task) {
+    equal("Get a bike!", task.get('name'));
+    
+    var moss = store.getById('person', 1);
+    equal("Maurice Moss", moss.get('name'));
+  }));
 });
 
 test("can load embedded belongTo records in a find response", function() {
 
-  var Adapter,
-      recordArray;
-
-  Adapter = DS.DjangoTastypieAdapter.extend({});
-
-  Adapter.map('Task', {
-    owner: {embedded: 'load', key: 'owner'}
-  });
-
-  store.set('adapter', Adapter);
-
+  env.container.register('serializer:task', DS.DjangoTastypieSerializer.extend({
+    attrs: {
+      owner: { embedded: 'load', key: 'owner' }
+    }
+  }));
 
   var data = {
     "meta": {},
@@ -542,35 +547,36 @@ test("can load embedded belongTo records in a find response", function() {
       "resource_uri": "\/api\/v1\/task\/1\/"
     }]
    };
-
-  recordArray = store.findQuery({limit:1});
-  adapter.didFindQuery(store, Task, data, recordArray);
-
-  var moss = store.find(Person, 1);
-  var bike = store.find(Task, 1);
-  equal("Maurice Moss", moss.get('name'));
-  equal("Get a bike!", bike.get('name'));
-  equal("Maurice Moss", bike.get('owner').get('name'));
+  
+  ajaxResponse(data);
+  store.findQuery('task', {limit: 1}).then(async(function(recordArray) {
+    store.push('task', recordArray);
+  }));
+  
+  store.find('person', 1).then(async(function(person) {
+    equal("Maurice Moss", person.get('name'));
+    
+    var bike = store.getById('task', 1);
+    
+    equal("Get a bike!", bike.get('name'));
+    equal("Maurice Moss", bike.get('owner').get('name'));
+  }));
+    
 });
 
 
 test("can load embedded hasMany records with camelCased properties", function() {
-
-  var Adapter;
-
-  Adapter = DS.DjangoTastypieAdapter.extend({});
 
   Person = DS.Model.extend({
     name: DS.attr('string'),
     tasksToDo: DS.hasMany('Task')
   });
 
-
-  Adapter.map('Person', {
-    tasksToDo: {embedded: 'load', key: 'tasksToDo'}
-  });
-
-  store.set('adapter', Adapter);
+  env.container.register('serializer:person', DS.DjangoTastypieSerializer.extend({
+    attrs: { 
+      tasksToDo: { embedded: 'load', key: 'tasksToDo' }
+    }
+  }));
 
   var data = {
     "id": 1,
@@ -588,12 +594,16 @@ test("can load embedded hasMany records with camelCased properties", function() 
     "resource_uri": "\/api\/v1\/person\/1\/"
   };
 
-  adapter.didFindRecord(store, Person, data);
+  store.push('person', data);
 
-  var moss = store.find('person', 1);
-  var german = store.find('task', 1);
-  var friendface = store.find('task', 2);
-  equal("Maurice Moss", moss.get('name'));
-  equal("Learn German Kitchen", german.get('name'));
-  equal("Join Friendface", friendface.get('name'));
+  store.find('person', 1).then(async(function(person) {
+    equal("Maurice Moss", person.get('name'));
+    
+    var german = store.getById('task', 1),
+        friendface = store.getById('task', 2);
+    
+    equal("Learn German Kitchen", german.get('name'));
+    equal("Join Friendface", friendface.get('name'));
+  }));
+
 });

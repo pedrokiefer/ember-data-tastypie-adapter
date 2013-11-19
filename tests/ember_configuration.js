@@ -61,7 +61,7 @@
       adapter: adapter
     }));
 
-    container.register('serializer:_default', DS.DjangoTastypieSerializer);
+    container.register('serializer:_default', DS.JSONSerializer);
     container.register('serializer:_rest', DS.RESTSerializer);
     container.register('adapter:_rest', DS.RESTAdapter);
 

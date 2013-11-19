@@ -63,11 +63,11 @@ function ajaxResponse(value) {
 }
 
 var expectUrl = function(url, desc) {
-  equal(passedUrl, url, "the URL is " + desc);
+  equal(passedUrl, url, "the URL is: " + url);
 };
 
 var expectType = function(type) {
-  equal(passedVerb, type, "the HTTP method is " + type);
+  equal(passedVerb, type, "the HTTP method is: " + type);
 };
 
 var expectData = function(hash) {
@@ -98,18 +98,18 @@ test('buildURL - should not use plurals', function() {
   equal(adapter.buildURL('person', 1), "/api/v1/person/1/");
 });
 
-test("creating a person makes a POST to /person, with the data hash", function() {
-  var person = store.createRecord('person', { name: "Tom Dale" });
-  ajaxResponse({ id: "1", name: "Tom Dale", tasks: [] });
+test("creating a person makes a POST to /api/v1/person, with the data hash", function() {
+  var person = store.createRecord('person');
+  set(person, 'name', 'Tom Dale');
   
+  ajaxResponse({ id: 1,  name: "Tom Dale"});
   person.save().then(async(function(person) {
     equal(passedUrl, "/api/v1/person/");
     equal(passedVerb, "POST");
-    deepEqual(passedHash.data, { name: "Tom Dale", tasks: [] });
+    expectData({ name: "Tom Dale", tasks: [] });
 
     equal(person.get('id'), "1", "the post has the updated ID");
     equal(person.get('isDirty'), false, "the post isn't dirty anymore");
-    equal(person.get('name'), "Dat Parley Letter", "the post was updated");    
   }));
   
 });
@@ -223,7 +223,7 @@ test("finding all people makes a GET to /api/v1/person/", function() {
     expectState(person, 'loaded');
     expectState(person, 'dirty', false);
 
-    equal(person, store.find(Person, 1), "the record is now in the store, and can be looked up by ID without another Ajax request");
+    equal(person, store.getById('person', 1), "the record is now in the store, and can be looked up by ID without another Ajax request");
   }));
 });
 
@@ -246,71 +246,65 @@ test("finding a person by ID makes a GET to /api/v1/person/:id/", function() {
   ajaxResponse({ id: 1, name: "Yehuda Katz" });
   
   store.find('person', 1).then(async(function(person) {
-    expectState(person, 'loaded', false);
     expectUrl("/api/v1/person/1/", "the model name with the ID requested");
     expectType("GET");
 
-    expectState(person, 'loaded');
+    expectState(person, 'loaded', true);
     expectState(person, 'dirty', false);
 
-    equal(person, store.find('person', 1), "the record is now in the store, and can be looked up by ID without another Ajax request");  
+    equal(person, store.getById('person', 1), "the record is now in the store, and can be looked up by ID without another Ajax request");  
   }));
 });
 
 test("findMany generates a tastypie style url", function() {
-  ajaxResponse();
-  store.find('person', [1,2,3]).then(async(function(person) {
+  ajaxResponse({
+    "objects": [
+      { id: 1, name: "Rein Heinrichs" },
+      { id: 2, name: "Tom Dale" },
+      { id: 3, name: "Yehuda Katz" }
+    ]});
+  
+  store.find('person', [1, 2, 3]).then(async(function(people) {
       expectUrl("/api/v1/person/set/1;2;3/");
       expectType("GET"); 
+      
+      var rein = store.getById('person', 1),
+          tom = store.getById('person', 2),
+          yehuda = store.getById('person', 3);
+
+      deepEqual(rein.getProperties('id', 'name'), { id: "1", name: "Rein Heinrichs" });
+      deepEqual(tom.getProperties('id', 'name'), { id: "2", name: "Tom Dale" });
+      deepEqual(yehuda.getProperties('id', 'name'), { id: "3", name: "Yehuda Katz" });
   }));
 });
 
 test("finding many people by a list of IDs", function() {
-  var group;
-
-  store.push('group', { id: 1, people: [
-      "/api/v1/person/1/",
-      "/api/v1/person/2/",
-      "/api/v1/person/3/"
-  ]});
+  Group.reopen({ people: DS.hasMany('person', { async: true }) });
+  
+  store.push('group', { id: 1, people: [1, 2, 3]});
 
   store.find('group', 1).then(async(function(group) {
     equal(passedUrl, undefined, "no Ajax calls have been made yet");
-
-    var people = get(group, 'people');
-
-    equal(get(people, 'length'), 3, "there are three people in the association already");
-
-    people.forEach(function(person) {
-      equal(get(person, 'isLoaded'), false, "the person is being loaded");
-    });
-    
     ajaxResponse({"objects":
       [
         { id: 1, name: "Rein Heinrichs" },
         { id: 2, name: "Tom Dale" },
         { id: 3, name: "Yehuda Katz" }
       ]});
-    return people;
+    return group.get('people');
   })).then(async(function(people) {
     expectUrl("/api/v1/person/set/1;2;3/");
     expectType("GET");
 
-    var rein = people.objectAt(0);
-    equal(get(rein, 'name'), "Rein Heinrichs");
-    equal(get(rein, 'id'), 1);
+    var rein = store.getById('person', 1),
+        tom = store.getById('person', 2),
+        yehuda = store.getById('person', 3);
+    
+    deepEqual(rein.getProperties('id', 'name'), { id: "1", name: "Rein Heinrichs" });
+    deepEqual(tom.getProperties('id', 'name'), { id: "2", name: "Tom Dale" });
+    deepEqual(yehuda.getProperties('id', 'name'), { id: "3", name: "Yehuda Katz" });
 
-    var tom = people.objectAt(1);
-    equal(get(tom, 'name'), "Tom Dale");
-    equal(get(tom, 'id'), 2);
-
-    var yehuda = people.objectAt(2);
-    equal(get(yehuda, 'name'), "Yehuda Katz");
-    equal(get(yehuda, 'id'), 3);
-
-    people.forEach(function(person) {
-      equal(get(person, 'isLoaded'), true, "the person is being loaded");
-    });
+    deepEqual(people.toArray(), [ rein, tom, yehuda ], "The correct records are in the array");     
   }));
 });
 
@@ -389,7 +383,8 @@ test("creating an item with a belongsTo relationship urlifies the Resource URI (
     expectState(task, 'dirty', true);
     set(task, 'owner', person);
     
-    ajaxResponse({ name: "Get a bike!", owner_id: "/api/v1/person/1/"});
+    //ajaxResponse({ name: "Get a bike!", owner_id: "/api/v1/person/1/"});
+    ajaxResponse({});
     
     return task.save();
   })).then(async(function(task) {
@@ -402,7 +397,7 @@ test("creating an item with a belongsTo relationship urlifies the Resource URI (
 
 test("creating an item with a belongsTo relationship urlifies the Resource URI (custom key)", function() {
   env.container.register('serializer:task', DS.DjangoTastypieSerializer.extend({
-    attrs: { key: 'owner_custom_key' }
+    attrs: { owner: 'owner_custom_key' }
   }));
 
   store.push('person', {id: 1, name: "Maurice Moss"});

@@ -48,7 +48,8 @@ module("integration/django_tastypie_adapter - DjangoTastypieSerializer", {
       popularVillain: PopularVillain,
       comment:        Comment,
       course:         Course,
-      unit:           Unit
+      unit:           Unit,
+      adapter: DS.DjangoTastypieAdapter
     });
     env.store.modelFor('superVillain');
     env.store.modelFor('homePlanet');
@@ -78,9 +79,10 @@ test("serialize", function() {
   var json = env.dtSerializer.serialize(tom);
 
   deepEqual(json, {
+    evilMinions: [],
     firstName: "Tom",
     lastName: "Dale",
-    homePlanet: get(league, "id")
+    homePlanet_id: '/api/v1/homePlanet/'+get(league, "id")+'/'
   });
 });
 
@@ -91,9 +93,8 @@ test("serializeIntoHash", function() {
   env.dtSerializer.serializeIntoHash(json, HomePlanet, league);
 
   deepEqual(json, {
-    homePlanet: {
-      name: "Umber"
-    }
+    name: "Umber",
+    villains: []
   });
 });
 
@@ -111,11 +112,10 @@ test("normalize", function() {
 });
 
 test("extractSingle", function() {
-  env.container.register('adapter:superVillain', DS.ActiveModelAdapter);
+  env.container.register('adapter:superVillain', DS.DjangoTastypieAdapter);
 
   var json_hash = {
-    homePlanet:   {id: "1", name: "Umber", villains: [1]},
-    superVillains:  [{id: "1", firstName: "Tom", lastName: "Dale", homePlanetId: "1"}]
+    id: "1", name: "Umber", villains: [1]
   };
 
   var json = env.dtSerializer.extractSingle(env.store, HomePlanet, json_hash);
@@ -132,8 +132,8 @@ test("extractSingle", function() {
 });
 
 test("extractSingle with embedded objects", function() {
-  env.container.register('adapter:superVillain', DS.ActiveModelAdapter);
-  env.container.register('serializer:homePlanet', DS.ActiveModelSerializer.extend({
+  env.container.register('adapter:superVillain', DS.DjangoTastypieAdapter);
+  env.container.register('serializer:homePlanet', DS.DjangoTastypieSerializer.extend({
     attrs: {
       villains: {embedded: 'always'}
     }
@@ -141,15 +141,13 @@ test("extractSingle with embedded objects", function() {
 
   var serializer = env.container.lookup("serializer:homePlanet");
   var json_hash = {
-    home_planet: {
+    id: "1",
+    name: "Umber",
+    villains: [{
       id: "1",
-      name: "Umber",
-      villains: [{
-        id: "1",
-        first_name: "Tom",
-        last_name: "Dale"
-      }]
-    }
+      first_name: "Tom",
+      last_name: "Dale"
+    }]
   };
 
   var json = serializer.extractSingle(env.store, HomePlanet, json_hash);
@@ -165,13 +163,13 @@ test("extractSingle with embedded objects", function() {
 });
 
 test("extractSingle with embedded objects inside embedded objects", function() {
-  env.container.register('adapter:superVillain', DS.ActiveModelAdapter);
-  env.container.register('serializer:homePlanet', DS.ActiveModelSerializer.extend({
+  env.container.register('adapter:superVillain', DS.DjangoTastypieAdapter);
+  env.container.register('serializer:homePlanet', DS.DjangoTastypieSerializer.extend({
     attrs: {
       villains: {embedded: 'always'}
     }
   }));
-  env.container.register('serializer:superVillain', DS.ActiveModelSerializer.extend({
+  env.container.register('serializer:superVillain', DS.DjangoTastypieSerializer.extend({
     attrs: {
       evilMinions: {embedded: 'always'}
     }
@@ -179,19 +177,17 @@ test("extractSingle with embedded objects inside embedded objects", function() {
 
   var serializer = env.container.lookup("serializer:homePlanet");
   var json_hash = {
-    home_planet: {
+    id: "1",
+    name: "Umber",
+    villains: [{
       id: "1",
-      name: "Umber",
-      villains: [{
+      firstName: "Tom",
+      lastName: "Dale",
+      evilMinions: [{
         id: "1",
-        first_name: "Tom",
-        last_name: "Dale",
-        evil_minions: [{
-          id: "1",
-          name: "Alex"
-        }]
+        name: "Alex"
       }]
-    }
+    }]
   };
 
   var json = serializer.extractSingle(env.store, HomePlanet, json_hash);
@@ -212,8 +208,8 @@ test("extractSingle with embedded objects inside embedded objects", function() {
 });
 
 test("extractSingle with embedded objects of same type", function() {
-  env.container.register('adapter:comment', DS.ActiveModelAdapter);
-  env.container.register('serializer:comment', DS.ActiveModelSerializer.extend({
+  env.container.register('adapter:comment', DS.DjangoTastypieAdapter);
+  env.container.register('serializer:comment', DS.DjangoTastypieSerializer.extend({
     attrs: {
       children: {embedded: 'always'}
     }
@@ -221,21 +217,19 @@ test("extractSingle with embedded objects of same type", function() {
 
   var serializer = env.container.lookup("serializer:comment");
   var json_hash = {
-    comment: {
-      id: "1",
-      body: "Hello",
-      root: true,
-      children: [{
-        id: "2",
-        body: "World",
-        root: false
-      },
-      {
-        id: "3",
-        body: "Foo",
-        root: false
-      }]
-    }
+    id: "1",
+    body: "Hello",
+    root: true,
+    children: [{
+      id: "2",
+      body: "World",
+      root: false
+    },
+    {
+      id: "3",
+      body: "Foo",
+      root: false
+    }]
   };
   var json = serializer.extractSingle(env.store, Comment, json_hash);
 
@@ -250,8 +244,8 @@ test("extractSingle with embedded objects of same type", function() {
 });
 
 test("extractSingle with embedded objects inside embedded objects of same type", function() {
-  env.container.register('adapter:comment', DS.ActiveModelAdapter);
-  env.container.register('serializer:comment', DS.ActiveModelSerializer.extend({
+  env.container.register('adapter:comment', DS.DjangoTastypieAdapter);
+  env.container.register('serializer:comment', DS.DjangoTastypieSerializer.extend({
     attrs: {
       children: {embedded: 'always'}
     }
@@ -259,26 +253,24 @@ test("extractSingle with embedded objects inside embedded objects of same type",
 
   var serializer = env.container.lookup("serializer:comment");
   var json_hash = {
-    comment: {
-      id: "1",
-      body: "Hello",
-      root: true,
+    id: "1",
+    body: "Hello",
+    root: true,
+    children: [{
+      id: "2",
+      body: "World",
+      root: false,
       children: [{
-        id: "2",
-        body: "World",
-        root: false,
-        children: [{
-          id: "4",
-          body: "Another",
-          root: false
-        }]
-      },
-      {
-        id: "3",
-        body: "Foo",
+        id: "4",
+        body: "Another",
         root: false
       }]
-    }
+    },
+    {
+      id: "3",
+      body: "Foo",
+      root: false
+    }]
   };
   var json = serializer.extractSingle(env.store, Comment, json_hash);
 
@@ -296,8 +288,8 @@ test("extractSingle with embedded objects inside embedded objects of same type",
 });
 
 test("extractSingle with embedded objects of same type, but from separate attributes", function() {
-  env.container.register('adapter:course', DS.ActiveModelAdapter);
-  env.container.register('serializer:course', DS.ActiveModelSerializer.extend({
+  env.container.register('adapter:course', DS.DjangoTastypieAdapter);
+  env.container.register('serializer:course', DS.DjangoTastypieSerializer.extend({
     attrs: {
       prerequisiteUnits: {embedded: 'always'},
       units: {embedded: 'always'}
@@ -306,24 +298,22 @@ test("extractSingle with embedded objects of same type, but from separate attrib
 
   var serializer = env.container.lookup("serializer:course");
   var json_hash = {
-    course: {
+    id: "1",
+    name: "Course 1",
+    prerequisiteUnits: [{
       id: "1",
-      name: "Course 1",
-      prerequisite_units: [{
-        id: "1",
-        name: "Unit 1"
-      },{
-        id: "3",
-        name: "Unit 3"
-      }],
-      units: [{
-        id: "2",
-        name: "Unit 2"
-      },{
-        id: "4",
-        name: "Unit 4"
-      }]
-    }
+      name: "Unit 1"
+    },{
+      id: "3",
+      name: "Unit 3"
+    }],
+    units: [{
+      id: "2",
+      name: "Unit 2"
+    },{
+      id: "4",
+      name: "Unit 4"
+    }]
   };
   var json = serializer.extractSingle(env.store, Course, json_hash);
 
@@ -341,7 +331,7 @@ test("extractSingle with embedded objects of same type, but from separate attrib
 });
 
 test("extractArray", function() {
-  env.container.register('adapter:superVillain', DS.ActiveModelAdapter);
+  env.container.register('adapter:superVillain', DS.DjangoTastypieAdapter);
 
   var json_hash = {
     home_planets: [{id: "1", name: "Umber", villain_ids: [1]}],
@@ -362,8 +352,8 @@ test("extractArray", function() {
 });
 
 test("extractArray with embedded objects", function() {
-  env.container.register('adapter:superVillain', DS.ActiveModelAdapter);
-  env.container.register('serializer:homePlanet', DS.ActiveModelSerializer.extend({
+  env.container.register('adapter:superVillain', DS.DjangoTastypieAdapter);
+  env.container.register('serializer:homePlanet', DS.DjangoTastypieSerializer.extend({
     attrs: {
       villains: {embedded: 'always'}
     }
@@ -397,8 +387,8 @@ test("extractArray with embedded objects", function() {
 });
 
 test("extractArray with embedded objects of same type as primary type", function() {
-  env.container.register('adapter:comment', DS.ActiveModelAdapter);
-  env.container.register('serializer:comment', DS.ActiveModelSerializer.extend({
+  env.container.register('adapter:comment', DS.DjangoTastypieAdapter);
+  env.container.register('serializer:comment', DS.DjangoTastypieSerializer.extend({
     attrs: {
       children: {embedded: 'always'}
     }
@@ -407,7 +397,7 @@ test("extractArray with embedded objects of same type as primary type", function
   var serializer = env.container.lookup("serializer:comment");
 
   var json_hash = {
-    comments: [{
+    objects: [{
       id: "1",
       body: "Hello",
       root: true,
@@ -438,8 +428,8 @@ test("extractArray with embedded objects of same type as primary type", function
 });
 
 test("extractArray with embedded objects of same type, but from separate attributes", function() {
-  env.container.register('adapter:course', DS.ActiveModelAdapter);
-  env.container.register('serializer:course', DS.ActiveModelSerializer.extend({
+  env.container.register('adapter:course', DS.DjangoTastypieAdapter);
+  env.container.register('serializer:course', DS.DjangoTastypieSerializer.extend({
     attrs: {
       prerequisiteUnits: {embedded: 'always'},
       units: {embedded: 'always'}
@@ -448,10 +438,10 @@ test("extractArray with embedded objects of same type, but from separate attribu
 
   var serializer = env.container.lookup("serializer:course");
   var json_hash = {
-    courses: [{
+    objects: [{
       id: "1",
       name: "Course 1",
-      prerequisite_units: [{
+      prerequisiteUnits: [{
         id: "1",
         name: "Unit 1"
       },{
@@ -468,7 +458,7 @@ test("extractArray with embedded objects of same type, but from separate attribu
     },{
       id: "2",
       name: "Course 2",
-      prerequisite_units: [{
+      prerequisiteUnits: [{
         id: "1",
         name: "Unit 1"
       },{
@@ -523,7 +513,7 @@ test("serialize with embedded objects", function() {
   league = env.store.createRecord(HomePlanet, { name: "Villain League", id: "123" });
   var tom = env.store.createRecord(SuperVillain, { firstName: "Tom", lastName: "Dale", homePlanet: league });
 
-  env.container.register('serializer:homePlanet', DS.ActiveModelSerializer.extend({
+  env.container.register('serializer:homePlanet', DS.DjangoTastypieSerializer.extend({
     attrs: {
       villains: {embedded: 'always'}
     }
@@ -538,7 +528,8 @@ test("serialize with embedded objects", function() {
       id: get(tom, "id"),
       firstName: "Tom",
       lastName: "Dale",
-      homePlanet: get(league, "id")
+      homePlanet_id: '/api/v1/homePlanet/' + get(league, "id") +'/',
+      evilMinions: []
     }]
   });
 });
@@ -571,8 +562,7 @@ test("extractPolymorphic", function() {
   YellowMinion.toString = function() { return "YellowMinion"; };
 
   var json_hash = {
-    doomsdayDevice: {id: 1, name: "DeathRay", evilMinion: { type: "yellowMinion", id: 12}},
-    evilMinions:    [{id: 12, name: "Alex", doomsdayDeviceIds: [1] }]
+    id: 1, name: "DeathRay", evilMinion: { type: "yellowMinion", id: 12}
   };
 
   var json = env.dtSerializer.extractSingle(env.store, DoomsdayDevice, json_hash);
@@ -589,8 +579,7 @@ test("extractPolymorphic", function() {
 
 test("extractPolymorphic when the related data is not specified", function() {
   var json = {
-    doomsdayDevice: {id: 1, name: "DeathRay"},
-    evilMinions:    [{id: 12, name: "Alex", doomsdayDeviceIds: [1] }]
+    id: 1, name: "DeathRay"
   };
 
   json = env.dtSerializer.extractSingle(env.store, DoomsdayDevice, json);
@@ -604,7 +593,7 @@ test("extractPolymorphic when the related data is not specified", function() {
 
 test("extractPolymorphic hasMany when the related data is not specified", function() {
   var json = {
-    popularVillain: {id: 1, name: "Dr Horrible"}
+    id: 1, name: "Dr Horrible"
   };
 
   json = env.dtSerializer.extractSingle(env.store, PopularVillain, json);
@@ -612,13 +601,13 @@ test("extractPolymorphic hasMany when the related data is not specified", functi
   deepEqual(json, {
     "id": 1,
     "name": "Dr Horrible",
-    "evilMinions": undefined
+    "evilMinions": []
   });
 });
 
 test("extractPolymorphic does not break hasMany relationships", function() {
   var json = {
-    popularVillain: {id: 1, name: "Dr. Evil", evilMinions: []}
+    id: 1, name: "Dr. Evil", evilMinions: []
   };
 
   json = env.dtSerializer.extractSingle(env.store, PopularVillain, json);

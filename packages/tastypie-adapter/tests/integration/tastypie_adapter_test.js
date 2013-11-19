@@ -328,7 +328,7 @@ test("finding people by a query", function() {
   store.find('person', {page: 1}).then(async(function(people) {
     equal(passedUrl, "/api/v1/person/");
     equal(passedVerb, "GET");
-    deepEqual(passedHash, { page: 1 });
+    deepEqual(passedHash.data, { page: 1 });
     
     equal(get(people, 'length'), 3, "the people are now loaded");
     

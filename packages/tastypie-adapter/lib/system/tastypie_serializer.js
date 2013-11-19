@@ -183,10 +183,10 @@ DS.DjangoTastypieSerializer = DS.JSONSerializer.extend({
       var objects = payload.objects;
       
       for (var i = 0; i < objects.length; i++) {
+        updatePayloadWithEmbedded(store, this, primaryType, objects[i]);
         var reference = this.normalize(primaryType, objects[i]);
         references.push(reference);
       }
-      delete payload.objects;
     }
     
     return references;

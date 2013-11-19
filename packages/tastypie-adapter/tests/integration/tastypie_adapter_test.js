@@ -476,11 +476,11 @@ test("can load embedded hasMany records", function() {
     "resource_uri": "\/api\/v1\/person\/1\/"
   };
 
-  store.push('person', data);
+  ajaxResponse(data);
 
   store.find('person', 1).then(async(function(moss) {
     equal("Maurice Moss", moss.get('name'));
-    equal(2, moss.get('tasks.length'));
+    equal(moss.get('tasks.length'), 2);
     
     var german = store.getById('task', 1),
         friendface = store.getById('task', 2);
@@ -525,18 +525,18 @@ test("can load embedded belongTo records in a find response", function() {
 
   env.container.register('serializer:task', DS.DjangoTastypieSerializer.extend({
     attrs: {
-      owner: { embedded: 'load', key: 'owner' }
+      owner: { embedded: 'load'}
     }
   }));
 
   var data = {
     "meta": {},
     "objects": [{
-      "id": 1,
+      id: 1,
       "name": "Get a bike!",
       "owner": {
         "name": "Maurice Moss",
-        "id": "1",
+        id: 1,
         "resource_uri": "\/api\/v1\/person\/1\/"
        },
       "resource_uri": "\/api\/v1\/task\/1\/"
@@ -544,17 +544,16 @@ test("can load embedded belongTo records in a find response", function() {
    };
   
   ajaxResponse(data);
-  store.findQuery('task', {limit: 1}).then(async(function(recordArray) {
-    store.push('task', recordArray);
-  }));
-  
-  store.find('person', 1).then(async(function(person) {
-    equal("Maurice Moss", person.get('name'));
+  store.findQuery('task', {limit: 1}).then(async(function(task) {
+    equal(task.get('name'), "Get a bike!");
+    return store.find('person', 1);
+  })).then(async(function(person) {
+    equal(person.get('name'), "Maurice Moss");
     
     var bike = store.getById('task', 1);
     
-    equal("Get a bike!", bike.get('name'));
-    equal("Maurice Moss", bike.get('owner').get('name'));
+    equal(bike.get('name'), "Get a bike!");
+    equal(bike.get('owner').get('name'), "Maurice Moss");
   }));
     
 });

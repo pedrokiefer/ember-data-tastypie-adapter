@@ -71,12 +71,7 @@ DS.DjangoTastypieSerializer = DS.RESTSerializer.extend({
     console.log("RecordID: ", recordId);
     console.log("requestType: ", requestType);
     
-    var primaryTypeName = primaryType.typeKey,
-        primaryRecord;
-    
-    var typeSerializer = store.serializerFor(primaryTypeName);
-    var hash = typeSerializer.normalize(primaryTypeName, payload);
-    return hash;
+    return this.normalize(primaryType, payload);
   },
   
   extractMany: function(store, primaryType, payload) {
@@ -84,21 +79,7 @@ DS.DjangoTastypieSerializer = DS.RESTSerializer.extend({
     console.log("Type: ", primaryType);
     console.log("Payload: ", payload);
     
-    var primaryTypeName = primaryType.typeKey,
-        primaryArray;
-        
-    var typeName = this.typeForRoot(primaryTypeName),
-        type = store.modelFor(typeName),
-        typeSerializer = store.serializerFor(type);
-
-      /*jshint loopfunc:true*/
-      var normalizedArray = map.call(payload, function(hash) {
-        return typeSerializer.normalize(type, hash);
-      }, this);
-
-        primaryArray = normalizedArray;
-
-    return primaryArray;
+    return this._super(store, primaryType, payload);
   },
 
   extractMeta: function(store, type, payload) {

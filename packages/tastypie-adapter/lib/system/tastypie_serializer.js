@@ -1,7 +1,7 @@
-var get = Ember.get, set = Ember.set, isNone = Ember.isNone;
+var get = Ember.get, set = Ember.set, isNone = Ember.isNone, merge = Ember.merge;
 
-var forEach = Ember.ArrayPolyfills.forEach;
-var map = Ember.ArrayPolyfills.map;
+var map = Ember.EnumerableUtils.map;
+var forEach = Ember.EnumerableUtils.forEach;
 
 DS.DjangoTastypieSerializer = DS.JSONSerializer.extend({
 
@@ -9,81 +9,39 @@ DS.DjangoTastypieSerializer = DS.JSONSerializer.extend({
     this._super.apply(this, arguments);
   },
 
-  getItemUrl: function(meta, id){
-    var url, store, adapter;
-    
-    store = this.get('store');
-    adapter = store.adapterFor(meta);
-    
-    url = adapter.pathForType(meta.type.typeKey);
-    return ["", adapter.get('namespace'), url, id, ""].join('/');
-  },
-
-
-  keyForRelationship: function(key, kind) {
-    var attrs = get(this, 'attrs');
-    
-    if (attrs && attrs[key]) {
-      return attrs[key];
-    }
-    
-    return key + "_id";
+  keyForAttribute: function (attr) {
+    return Ember.String.decamelize(attr);
   },
   
-  normalize: function(type, hash, prop) {
+  keyForRelationship: function (key, kind) {
+    return Ember.String.decamelize(key);
+  },
+
+  normalizePayload: function (type, payload) {
+    return payload;
+  },
+
+  normalize: function (type, hash, prop) {
     this.normalizeId(hash);
-    this.normalizeUsingDeclaredMapping(type, hash);
     this.normalizeAttributes(type, hash);
     this.normalizeRelationships(type, hash);
 
-    if (this.normalizeHash && this.normalizeHash[prop]) {
-      return this.normalizeHash[prop](hash);
-    }
-
     return this._super(type, hash, prop);
   },
-  
-  /**
-    @method normalizeId
-    @private
-  */
-  normalizeId: function(hash) {
-    var primaryKey = get(this, 'primaryKey');
 
-    if (primaryKey === 'id') { return; }
-
-    hash.id = hash[primaryKey];
-    delete hash[primaryKey];
+  normalizeId: function (hash) {
+    hash.id = this.resourceUriToId(hash['resource_uri']);
+    delete hash['resource_uri'];
   },
 
-  /**
-    @method normalizeUsingDeclaredMapping
-    @private
-  */
-  normalizeUsingDeclaredMapping: function(type, hash) {
-    var attrs = get(this, 'attrs'), payloadKey, key;
-
-    if (attrs) {
-      for (key in attrs) {
-        payloadKey = attrs[key];
-
-        hash[key] = hash[payloadKey];
-        delete hash[payloadKey];
-      }
-    }
-  },
-
-  /**
-    @method normalizeAttributes
-    @private
-  */
-  normalizeAttributes: function(type, hash) {
+  normalizeAttributes: function (type, hash) {
     var payloadKey, key;
-
     if (this.keyForAttribute) {
-      type.eachAttribute(function(key) {
+      type.eachAttribute(function (key) {
         payloadKey = this.keyForAttribute(key);
-        if (key === payloadKey) { return; }
+        if (key === payloadKey) {
+          return;
+        }
 
         hash[key] = hash[payloadKey];
         delete hash[payloadKey];
@@ -91,198 +49,118 @@ DS.DjangoTastypieSerializer = DS.JSONSerializer.extend({
     }
   },
 
-  /**
-    @method normalizeRelationships
-    @private
-  */
-  normalizeRelationships: function(type, hash) {
-    var payloadKey, key;
+  resourceUriToId: function (resourceUri){
+    return resourceUri.split('/').reverse()[1];
+  },
 
-    if (this.keyForRelationship) {
-      type.eachRelationship(function(key, relationship) {
+  relationshipToResourceUri: function (relationship, value){
+    if (!value) 
+      return value;
+
+    var store = relationship.type.store, 
+        typeKey = relationship.type.typeKey;
+    
+    return store.adapterFor(typeKey).buildURL(typeKey, get(value, 'id'));
+  },
+
+  /**
+  @method normalizeRelationships
+  @private
+  */
+  normalizeRelationships: function (type, hash) {
+    var payloadKey, key, self = this;
+
+    type.eachRelationship(function (key, relationship) {
+      if (this.keyForRelationship) {
         payloadKey = this.keyForRelationship(key, relationship.kind);
-        if (key === payloadKey) { return; }
-
-        hash[key] = hash[payloadKey];
-        delete hash[payloadKey];
-      }, this);
-    }
+        if (key !== payloadKey) {
+          hash[key] = hash[payloadKey];
+          delete hash[payloadKey];
+        }
+      }
+      if (hash[key]) {
+        if (relationship.kind === 'belongsTo'){
+          hash[key] = this.resourceUriToId(hash[key]);
+        } else if (relationship.kind === 'hasMany'){
+          var ids = [];
+          hash[key].forEach(function (resourceUri){
+            ids.push(self.resourceUriToId(resourceUri));
+          });
+          hash[key] = ids;
+        }
+      }
+    }, this);
   },
 
-  /**
-    ASSOCIATIONS: SERIALIZATION
-    Transforms the association fields to Resource URI django-tastypie format
-  */
-  serializeBelongsTo: function(record, json, relationship) {
-    var key = relationship.key;
-    //var embedded = this.embeddedType(record.constructor, key);
-    var belongsTo = get(record, key);
+  extractSingle: function (store, primaryType, payload, recordId, requestType) {
+    payload = this.normalizePayload(primaryType, payload);
+    return this.normalize(primaryType, payload, primaryType.typeKey);
+  },
 
+  extractArray: function (store, primaryType, payload) {
+    var records = [];
+    var self = this;
+    payload.objects.forEach(function (hash) {
+      records.push(self.normalize(primaryType, hash, primaryType.typeKey));
+    });
+    return records;
+  },
+
+  pushPayload: function (store, payload) {
+    payload = this.normalizePayload(null, payload);
+
+    return payload;
+  },
+
+  serialize: function (record, options) {
+    var json = {};
+
+    record.eachAttribute(function (key, attribute) {
+      this.serializeAttribute(record, json, key, attribute);
+    }, this);
+
+    record.eachRelationship(function (key, relationship) {
+      if (relationship.kind === 'belongsTo') {
+        this.serializeBelongsTo(record, json, relationship);
+      } else if (relationship.kind === 'hasMany') {
+        this.serializeHasMany(record, json, relationship);
+      }
+    }, this);
+
+    return json;
+  },
+
+  serializeIntoHash: function (data, type, record, options) {
+    merge(data, this.serialize(record, options));
+  },
+
+  serializeBelongsTo: function (record, json, relationship) {
+    this._super.apply(this, arguments);
+    var key = relationship.key;
     key = this.keyForRelationship ? this.keyForRelationship(key, "belongsTo") : key;
 
-    if (isNone(belongsTo)) {
-      json[key] = belongsTo;
-    } else {
-      //if (embedded === 'always') {
-      //  hash[key] = belongsTo.serialize();
-      //} else {
-        json[key] = this.getItemUrl(relationship, get(belongsTo, 'id'));
-      //}
-    }
-
-    if (relationship.options.polymorphic) {
-      this.serializePolymorphicType(record, json, relationship);
-    }
+    json[key] = this.relationshipToResourceUri(relationship, get(record, relationship.key));
   },
 
   serializeHasMany: function(record, json, relationship) {
-    var key   = relationship.key,
-        attrs = get(this, 'attrs'),
-        embed = attrs && attrs[key] && attrs[key].embedded === 'always';
+    var key = relationship.key;
+    key = this.keyForRelationship ? this.keyForRelationship(key, "belongsTo") : key;
 
-    if (embed) {
-      json[key] = get(record, key).map(function(relation) {
-        var data = relation.serialize(),
-            primaryKey = get(this, 'primaryKey');
+    var relationshipType = DS.RelationshipChange.determineRelationshipType(record.constructor, relationship);
 
-        data[primaryKey] = get(relation, primaryKey);
-
-        return data;
+    if (relationshipType === 'manyToNone' || relationshipType === 'manyToMany') {
+      json[key] = get(record, relationship.key).map(function (next){
+        return this.relationshipToResourceUri(relationship, next);
       }, this);
-    } else {
-      json[key] = get(record, key).map(function(relation) {        
-        this.getItemUrl(relation, get(relation, 'id'));
-      });
+            // TODO support for polymorphic manyToNone and manyToMany relationships
     }
   },
 
-  extractSingle: function(store, primaryType, payload, recordId, requestType) {
-    console.log("Store: ", store);
-    console.log("Type: ", primaryType.typeKey);
-    console.log("Payload: ", payload);
-    console.log("RecordID: ", recordId);
-    console.log("requestType: ", requestType);
-    
-    updatePayloadWithEmbedded(store, this, primaryType, payload);
-    
-    var reference = this.normalize(primaryType, payload);
-    console.log("reference: ", reference);
-    
-    return reference;
-  },
-  
-  extractArray: function(store, primaryType, payload, recordId, requestType) {
-    console.log("Store: ", store);
-    console.log("Type: ", primaryType);
-    console.log("Payload: ", payload);
-    console.log("RecordID: ", recordId);
-    console.log("requestType: ", requestType);
-    var references = [];
-    
-    if (payload.objects) {
-      var objects = payload.objects;
-      
-      for (var i = 0; i < objects.length; i++) {
-        updatePayloadWithEmbedded(store, this, primaryType, objects[i]);
-        var reference = this.normalize(primaryType, objects[i]);
-        references.push(reference);
-      }
-    }
-    
-    return references;
-  },
-
-  /**
-    ASSOCIATIONS: DESERIALIZATION
-    Transforms the association fields from Resource URI django-tastypie format
-  */
-  _deurlify: function(value) {
-    if (typeof value === "string") {
-      return value.split('/').reverse()[1];
-    } else {
-      return value;
-    }
-  },
-
-  extractHasMany: function(type, hash, key) {
-    var value,
-      self = this;
-
-    value = hash[key];
-
-    if (!!value) {
-      value.forEach(function(item, i, collection) {
-        collection[i] = self._deurlify(item);
-      });
-    }
-
-    return value;
-  },
-
-  extractBelongsTo: function(type, hash, key) {
-    var value = hash[key];
-
-    if (!!value) {
-      value = this._deurlify(value);
-    }
-    return value;
-  },
-  
-  serializeIntoHash: function(hash, type, record, options) {
-    var serial = this.serialize(record, options);
-    for (var property in serial) {
-      if (serial.hasOwnProperty(property)) {
-        hash[property] = serial[property];
-      }
-    }
+  serializePolymorphicType: function (record, json, relationship) {
+    var key = relationship.key,
+        belongsTo = get(record, key);
+    key = this.keyForAttribute ? this.keyForAttribute(key) : key;
+    json[key + "Type"] = belongsTo.constructor.typeKey;
   }
-
 });
-
-function updatePayloadWithEmbedded(store, serializer, type, payload) {
-  var attrs = get(serializer, 'attrs');
-
-  if (!attrs) {
-    return;
-  }
-  
-  type.eachRelationship(function(key, relationship) {
-    var expandedKey, embeddedTypeKey, attribute, ids,
-        config = attrs[key],
-        serializer = store.serializerFor(relationship.type.typeKey),
-        primaryKey = get(serializer, "primaryKey");
-
-    if (relationship.kind !== "hasMany") {
-      return;
-    }
-
-    if (config && (config.embedded === 'always' || config.embedded === 'load')) {
-      // underscore forces the embedded records to be side loaded.
-      // it is needed when main type === relationship.type
-      embeddedTypeKey = '_' + relationship.type.typeKey;
-      expandedKey = this.keyForRelationship(key, relationship.kind);
-      attribute  = this.keyForAttribute ? this.keyForAttribute(key) : key;
-      ids = [];
-
-      /*
-      if (!partial[attribute]) {
-        return;
-      }
-
-      payload[embeddedTypeKey] = payload[embeddedTypeKey] || [];
-
-      forEach(partial[attribute], function(data) {
-        var embeddedType = store.modelFor(relationship.type.typeKey);
-        updatePayloadWithEmbedded(store, serializer, embeddedType, data, payload);
-        ids.push(data[primaryKey]);
-        payload[embeddedTypeKey].push(data);
-      });
-
-      partial[expandedKey] = ids;
-      delete partial[attribute];
-      */
-      console.log(embeddedTypeKey, payload[embeddedTypeKey]);
-    }
-  }, serializer);
-}
 

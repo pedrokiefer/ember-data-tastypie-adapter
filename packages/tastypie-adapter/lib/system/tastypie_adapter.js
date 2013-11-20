@@ -3,31 +3,12 @@ require('tastypie-adapter/system/tastypie_serializer');
 var get = Ember.get, set = Ember.set;
 
 DS.DjangoTastypieAdapter = DS.RESTAdapter.extend({
-  /**
-    Set this parameter if you are planning to do cross-site
-    requests to the destination domain. Remember trailing slash
-  */
-  serverDomain: null,
 
   /**
     This is the default Tastypie namespace found in the documentation.
     You may change it if necessary when creating the adapter
   */
   namespace: "api/v1",
-
-  /**
-    Bulk commits are not supported at this time by the adapter.
-    Changing this setting will not work
-  */
-  bulkCommit: false,
-
-  /**
-    Tastypie returns the next URL when all the elements of a type
-    cannot be fetched inside a single request. Unless you override this
-    feature in Tastypie, you don't need to change this value. Pagination
-    will work out of the box for findAll requests
-  */
-  since: 'next',
 
   /**
     Serializer object to manage JSON transformations
@@ -42,30 +23,15 @@ DS.DjangoTastypieAdapter = DS.RESTAdapter.extend({
   },
   
   buildURL: function(type, id) {
-    
-    if (typeof id === 'string') {
-      var ids = id.split(',');
-      if (ids.length > 1) {
-        id = "set/" + ids.join(";") + '/';
-      }
-    }
-    
     var url = this._super(type, id);
-    
     // Add the trailing slash to avoid setting requirement in Django.settings
     if (url.charAt(url.length -1) !== '/') {
       url += '/';
     }
-
-    // Add the server domain if any
-    if (!!this.serverDomain) {
-      url = this.removeTrailingSlash(this.serverDomain) + url;
-    }
-
     return url;
   },
 
-  findMany: function(store, type, ids) {
+  findMany: function(store, type, ids, owner) {
     var url;
 
     // FindMany array through subset of resources
@@ -76,38 +42,6 @@ DS.DjangoTastypieAdapter = DS.RESTAdapter.extend({
     url = this.buildURL(type.typeKey);
     url += ids;
 
-    return this.ajax(url, "GET");
-  },
-
-  /**
-     The actual nextUrl is being stored. The offset must be extracted from
-     the string to do a new call.
-     When there are remaining objects to be returned, Tastypie returns a
-     `next` URL that in the meta header. Whenever there are no
-     more objects to be returned, the `next` paramater value will be null.
-     Instead of calculating the next `offset` each time, we store the nextUrl
-     from which the offset will be extrated for the next request
-  */
-  sinceQuery: function(since) {
-    var offsetParam,
-        query;
-
-    query = {};
-
-    if (!!since) {
-      offsetParam = since.match(/offset=(\d+)/);
-      offsetParam = (!!offsetParam && !!offsetParam[1]) ? offsetParam[1] : null;
-      query.offset = offsetParam;
-    }
-
-    return offsetParam ? query : null;
-  },
-
-  removeTrailingSlash: function(url) {
-    if (url.charAt(url.length -1) === '/') {
-      return url.slice(0, -1);
-    }
-    return url;
+    return this.ajax(url, "GET", { data: {} });
   }
-
 });

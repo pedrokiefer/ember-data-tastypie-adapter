@@ -79,10 +79,9 @@ test("serialize", function() {
   var json = env.dtSerializer.serialize(tom);
 
   deepEqual(json, {
-    evilMinions: [],
-    firstName: "Tom",
-    lastName: "Dale",
-    homePlanet_id: '/api/v1/homePlanet/'+get(league, "id")+'/'
+    first_name: "Tom",
+    last_name: "Dale",
+    home_planet: '/api/v1/homePlanet/'+get(league, "id")+'/'
   });
 });
 
@@ -93,20 +92,19 @@ test("serializeIntoHash", function() {
   env.dtSerializer.serializeIntoHash(json, HomePlanet, league);
 
   deepEqual(json, {
-    name: "Umber",
-    villains: []
+    name: "Umber"
   });
 });
 
 test("normalize", function() {
-  var superVillain_hash = {firstName: "Tom", lastName: "Dale", homePlanet: "123", evilMinions: [1,2]};
+  var superVillain_hash = {firstName: "Tom", lastName: "Dale", homePlanet: "123", evilMinions: [1,2], resource_uri: '/api/v1/superVillain/1/'};
 
   var json = env.dtSerializer.normalize(SuperVillain, superVillain_hash, "superVillain");
 
   deepEqual(json, {
-    firstName: "Tom",
-    lastName: "Dale",
-    homePlanet: "123",
+    first_name: "Tom",
+    last_name: "Dale",
+    home_planet: "123",
     evilMinions: [1,2]
   });
 });
@@ -115,7 +113,8 @@ test("extractSingle", function() {
   env.container.register('adapter:superVillain', DS.DjangoTastypieAdapter);
 
   var json_hash = {
-    id: "1", name: "Umber", villains: [1]
+    id: "1", name: "Umber", villains: [1],
+    resource_uri: '/api/v1/super_villain/1/'
   };
 
   var json = env.dtSerializer.extractSingle(env.store, HomePlanet, json_hash);
@@ -146,8 +145,10 @@ test("extractSingle with embedded objects", function() {
     villains: [{
       id: "1",
       first_name: "Tom",
-      last_name: "Dale"
-    }]
+      last_name: "Dale",
+      resource_uri: '/api/v1/super_villain/1/'
+    }],
+    resource_uri: '/api/v1/home_planet/1/'
   };
 
   var json = serializer.extractSingle(env.store, HomePlanet, json_hash);
@@ -185,9 +186,12 @@ test("extractSingle with embedded objects inside embedded objects", function() {
       lastName: "Dale",
       evilMinions: [{
         id: "1",
-        name: "Alex"
-      }]
-    }]
+        name: "Alex",
+        resource_uri: '/api/v1/evil_minions/1/'
+      }],
+      resource_uri: '/api/v1/super_villain/1/'
+    }],
+    resource_uri: '/api/v1/home_planet/1/'
   };
 
   var json = serializer.extractSingle(env.store, HomePlanet, json_hash);
@@ -562,7 +566,7 @@ test("extractPolymorphic", function() {
   YellowMinion.toString = function() { return "YellowMinion"; };
 
   var json_hash = {
-    id: 1, name: "DeathRay", evilMinion: { type: "yellowMinion", id: 12}
+    id: 1, name: "DeathRay", evilMinion: { type: "yellowMinion", id: 12, resource_uri: '/api/v1/evil_minion/12/'}, resource_uri: '/api/v1/doomsday_device/1/'
   };
 
   var json = env.dtSerializer.extractSingle(env.store, DoomsdayDevice, json_hash);
@@ -579,7 +583,7 @@ test("extractPolymorphic", function() {
 
 test("extractPolymorphic when the related data is not specified", function() {
   var json = {
-    id: 1, name: "DeathRay"
+    id: 1, name: "DeathRay", resource_uri: '/api/v1/doomsday_device/1/'
   };
 
   json = env.dtSerializer.extractSingle(env.store, DoomsdayDevice, json);
@@ -593,7 +597,7 @@ test("extractPolymorphic when the related data is not specified", function() {
 
 test("extractPolymorphic hasMany when the related data is not specified", function() {
   var json = {
-    id: 1, name: "Dr Horrible"
+    id: 1, name: "Dr Horrible", resource_uri: '/api/v1/popular_villain/1/'
   };
 
   json = env.dtSerializer.extractSingle(env.store, PopularVillain, json);
@@ -607,7 +611,7 @@ test("extractPolymorphic hasMany when the related data is not specified", functi
 
 test("extractPolymorphic does not break hasMany relationships", function() {
   var json = {
-    id: 1, name: "Dr. Evil", evilMinions: []
+    id: 1, name: "Dr. Evil", evilMinions: [], resource_uri: '/api/v1/popular_villain/1/'
   };
 
   json = env.dtSerializer.extractSingle(env.store, PopularVillain, json);

@@ -350,7 +350,7 @@ test("finding people by a query", function() {
 
 test("if you specify a server domain then it is prepended onto all URLs", function() {
   adapter.setProperties({
-    host: 'http://localhost:8000',
+    host: 'http://localhost:8000'
   });
   equal(adapter.buildURL('person', 1), "http://localhost:8000/api/v1/person/1/");
 });

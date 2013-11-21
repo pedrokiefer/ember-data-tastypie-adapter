@@ -113,6 +113,7 @@ DS.DjangoTastypieSerializer = DS.JSONSerializer.extend({
   },
 
   extractSingle: function (store, primaryType, payload, recordId, requestType) {
+    extractEmbeddedFromPayload.call(this, store, primaryType, payload);
     payload = this.normalizePayload(primaryType, payload);
     return this.normalize(primaryType, payload, primaryType.typeKey);
   },
@@ -121,6 +122,7 @@ DS.DjangoTastypieSerializer = DS.JSONSerializer.extend({
     var records = [];
     var self = this;
     payload.objects.forEach(function (hash) {
+      extractEmbeddedFromPayload.call(self, store, primaryType, hash);
       records.push(self.normalize(primaryType, hash, primaryType.typeKey));
     });
     return records;
@@ -194,5 +196,72 @@ DS.DjangoTastypieSerializer = DS.JSONSerializer.extend({
 
 function isEmbedded(config) {
   return config && (config.embedded === 'always' || config.embedded === 'load');
+}
+
+function extractEmbeddedFromPayload(store, type, payload) {
+  var attrs = get(this, 'attrs');
+
+  if (!attrs) {
+    return;
+  }
+  
+  type.eachRelationship(function(key, relationship) {
+    var config = attrs[key];
+
+    if (isEmbedded(config)) {
+      if (relationship.kind === "hasMany") {
+        extractEmbeddedFromPayloadHasMany.call(this, store, key, relationship, payload, config);
+      }
+      if (relationship.kind === "belongsTo") {
+        extractEmbeddedFromPayloadBelongsTo.call(this, store, key, relationship, payload, config);
+      }
+    }
+  }, this);
+}
+
+function extractEmbeddedFromPayloadHasMany(store, primaryType, relationship, payload, config) {
+  var serializer = store.serializerFor(relationship.type.typeKey),
+      primaryKey = get(this, 'primaryKey');
+
+  var attribute = config.key ? config.key : this.keyForAttribute(primaryType);
+  var ids = [];
+
+  if (!payload[attribute]) {
+    return;
+  }
+
+  forEach(payload[attribute], function(data) {
+    var embeddedType = store.modelFor(relationship.type.typeKey);
+    
+    extractEmbeddedFromPayload.call(serializer, store, embeddedType, data);
+    
+    data = serializer.normalize(embeddedType, data, embeddedType.typeKey);
+    
+    ids.push(serializer.relationshipToResourceUri(relationship, data));
+    store.push(embeddedType, data);
+  });
+
+  payload[attribute] = ids;
+}
+
+function extractEmbeddedFromPayloadBelongsTo(store, primaryType, relationship, payload, config) {
+  var serializer = store.serializerFor(relationship.type.typeKey),
+      primaryKey = get(this, 'primaryKey');
+
+  var attribute = config.key ? config.key : this.keyForAttribute(primaryType);
+
+  if (!payload[attribute]) {
+    return;
+  }
+
+  var data = payload[attribute];
+  var embeddedType = store.modelFor(relationship.type.typeKey);
+    
+  extractEmbeddedFromPayload.call(serializer, store, embeddedType, data);
+  
+  data = serializer.normalize(embeddedType, data, embeddedType.typeKey); 
+  payload[attribute] = serializer.relationshipToResourceUri(relationship, data);
+  
+  store.push(embeddedType, data);
 }
 

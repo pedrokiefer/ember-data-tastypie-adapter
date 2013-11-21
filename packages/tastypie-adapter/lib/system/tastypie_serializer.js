@@ -148,7 +148,7 @@ DS.DjangoTastypieSerializer = DS.JSONSerializer.extend({
 
     var relationshipType = DS.RelationshipChange.determineRelationshipType(record.constructor, relationship);
 
-    if (relationshipType === 'manyToNone' || relationshipType === 'manyToMany') {
+    if (relationshipType === 'manyToNone' || relationshipType === 'manyToMany' || relationshipType === 'manyToOne') {
       json[key] = get(record, relationship.key).map(function (next){
         return this.relationshipToResourceUri(relationship, next);
       }, this);

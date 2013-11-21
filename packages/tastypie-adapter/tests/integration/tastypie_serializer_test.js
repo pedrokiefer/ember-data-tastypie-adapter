@@ -341,8 +341,8 @@ test("extractArray", function() {
   env.container.register('adapter:superVillain', DS.DjangoTastypieAdapter);
 
   var json_hash = {
-    home_planets: [{id: "1", name: "Umber", villain_ids: [1]}],
-    super_villains: [{id: "1", first_name: "Tom", last_name: "Dale", home_planet_id: "1"}]
+    meta: {},
+    objects: [{id: "1", name: "Umber", villains: ['/api/v1/superVillain/1/'], resource_uri: '/api/v1/homePlanet/1/'}]
   };
 
   var array = env.dtSerializer.extractArray(env.store, HomePlanet, json_hash);
@@ -350,11 +350,11 @@ test("extractArray", function() {
   deepEqual(array, [{
     "id": "1",
     "name": "Umber",
-    "villains": [1]
+    "villains": ["1"]
   }]);
 
-  env.store.find("superVillain", 1).then(async(function(minion){
-    equal(minion.get('firstName'), "Tom");
+  env.store.find("homePlanet", 1).then(async(function(minion){
+    equal(minion.get('name'), "Umber");
   }));
 });
 
@@ -369,14 +369,16 @@ test("extractArray with embedded objects", function() {
   var serializer = env.container.lookup("serializer:homePlanet");
 
   var json_hash = {
-    home_planets: [{
+    objects: [{
       id: "1",
       name: "Umber",
       villains: [{
         id: "1",
         first_name: "Tom",
-        last_name: "Dale"
-      }]
+        last_name: "Dale",
+        resource_uri: '/api/v1/superVillain/1/'
+      }],
+      resource_uri: '/api/v1/homePlanet/1/'
     }]
   };
 
@@ -411,13 +413,16 @@ test("extractArray with embedded objects of same type as primary type", function
       children: [{
         id: "2",
         body: "World",
-        root: false
+        root: false,
+        resource_uri: '/api/v1/comment/2/'
       },
       {
         id: "3",
         body: "Foo",
-        root: false
-      }]
+        root: false,
+        resource_uri: '/api/v1/homePlanet/3/'
+      }],
+      resource_uri: '/api/v1/comment/1/'
     }]
   };
 

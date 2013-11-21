@@ -491,7 +491,7 @@ test("can load embedded hasMany records", function() {
 
   store.find('person', 1).then(async(function(moss) {
     equal(moss.get('name'), "Maurice Moss");
-    equal(moss.get('tasks'), 2);
+    equal(moss.get('tasks.length'), 2);
     
     var german = store.getById('task', 1),
         friendface = store.getById('task', 2);
@@ -516,14 +516,12 @@ test("can load embedded belongTo records", function() {
     "owner": {
       "name": "Maurice Moss",
       "id": "1",
-      "resource_uri": "\/api\/v1\/person\/1\/"
+      "resource_uri": "/api/v1/person/1/"
     },
-    "resource_uri": "\/api\/v1\/task\/1\/"
+    "resource_uri": "/api/v1/task/1/"
   };
-
-  store.push('task', data);
-
-  var moss = store.find(Person, 1);
+  
+  ajaxResponse(data);
   store.find('task', 1).then(async(function(task) {
     equal("Get a bike!", task.get('name'));
     
@@ -548,15 +546,15 @@ test("can load embedded belongTo records in a find response", function() {
       "owner": {
         "name": "Maurice Moss",
         id: 1,
-        "resource_uri": "\/api\/v1\/person\/1\/"
+        "resource_uri": "/api/v1/person/1/"
        },
-      "resource_uri": "\/api\/v1\/task\/1\/"
+      "resource_uri": "/api/v1/task/1/"
     }]
    };
   
   ajaxResponse(data);
-  store.findQuery('task', {limit: 1}).then(async(function(task) {
-    equal(task.get('name'), "Get a bike!");
+  store.findQuery('task', {limit: 1}).then(async(function(tasks) {
+    equal(tasks.objectAt(0).get('name'), "Get a bike!");
     return store.find('person', 1);
   })).then(async(function(person) {
     equal(person.get('name'), "Maurice Moss");
@@ -564,7 +562,7 @@ test("can load embedded belongTo records in a find response", function() {
     var bike = store.getById('task', 1);
     
     equal(bike.get('name'), "Get a bike!");
-    equal(bike.get('owner').get('name'), "Maurice Moss");
+    equal(bike.get('owner').get('name'), person.get('name'));
   }));
     
 });
@@ -572,37 +570,37 @@ test("can load embedded belongTo records in a find response", function() {
 
 test("can load embedded hasMany records with camelCased properties", function() {
 
-  Person.reopen({
+  Person = DS.Model.extend({
     name: DS.attr('string'),
     tasksToDo: DS.hasMany('task')
   });
-
+  
+  env.container.register('model:person', Person);
   env.container.register('serializer:person', DS.DjangoTastypieSerializer.extend({
     attrs: { 
-      tasksToDo: { embedded: 'load' }
+      tasksToDo: { embedded: 'load', key: 'tasksToDo' }
     }
   }));
 
   var data = {
-    "id": 1,
+    "id": "1",
     "name": "Maurice Moss",
     "tasksToDo": [{
       "name": "Learn German Kitchen",
       "id": "1",
-      "resource_uri": "\/api\/v1\/task\/1\/"
+      "resource_uri": "/api/v1/task/1/"
     },
     {
       "name": "Join Friendface",
       "id": "2",
-      "resource_uri": "\/api\/v1\/task\/2\/"
+      "resource_uri": "/api/v1/task/2/"
     }],
-    "resource_uri": "\/api\/v1\/person\/1\/"
+    "resource_uri": "/api/v1/person/1/"
   };
 
-  store.push('person', data);
-
+  ajaxResponse(data);
   store.find('person', 1).then(async(function(person) {
-    equal("Maurice Moss", person.get('name'));
+    equal(person.get('name'), "Maurice Moss");
     
     var german = store.getById('task', 1),
         friendface = store.getById('task', 2);

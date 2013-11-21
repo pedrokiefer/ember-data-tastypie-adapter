@@ -311,7 +311,7 @@ test("extractSingle with embedded objects of same type, but from separate attrib
   var json_hash = {
     id: "1",
     name: "Course 1",
-    prerequisiteUnits: [{
+    prerequisite_units: [{
       id: "1",
       name: "Unit 1",
       resource_uri: '/api/v1/unit/1/'
@@ -459,7 +459,7 @@ test("extractArray with embedded objects of same type, but from separate attribu
       id: "1",
       name: "Course 1",
       resource_uri: '/api/v1/course/1/',
-      prerequisiteUnits: [{
+      prerequisite_units: [{
         id: "1",
         name: "Unit 1",
         resource_uri: '/api/v1/unit/1/'
@@ -481,7 +481,7 @@ test("extractArray with embedded objects of same type, but from separate attribu
       id: "2",
       name: "Course 2",
       resource_uri: '/api/v1/course/2/',
-      prerequisiteUnits: [{
+      prerequisite_units: [{
         id: "1",
         name: "Unit 1",
         resource_uri: '/api/v1/unit/1/'
@@ -552,11 +552,10 @@ test("serialize with embedded objects", function() {
   deepEqual(json, {
     name: "Villain League",
     villains: [{
-      id: get(tom, "id"),
-      firstName: "Tom",
-      lastName: "Dale",
-      home_planet: '/api/v1/home_planet/' + get(league, "id") +'/',
-      evilMinions: []
+      first_name: "Tom",
+      last_name: "Dale",
+      home_planet: '/api/v1/homePlanet/' + get(league, "id") +'/',
+      evil_minions: []
     }]
   });
 });

@@ -127,10 +127,6 @@ test("extractSingle", function() {
     "name": "Umber",
     "villains": ["1"]
   });
-  
-  env.store.find("superVillain", 1).then(async(function(minion){
-    equal(minion.get('firstName'), "Tom");
-  }));
 });
 
 test("extractSingle with embedded objects", function() {
@@ -161,6 +157,7 @@ test("extractSingle with embedded objects", function() {
     name: "Umber",
     villains: ["1"]
   });
+
   env.store.find("superVillain", 1).then(async(function(minion) {
     equal(minion.get('firstName'), "Tom");
   }));
@@ -230,13 +227,16 @@ test("extractSingle with embedded objects of same type", function() {
     children: [{
       id: "2",
       body: "World",
-      root: false
+      root: false,
+      resource_uri: '/api/v1/comment/2/'
     },
     {
       id: "3",
       body: "Foo",
-      root: false
-    }]
+      root: false,
+      resource_uri: '/api/v1/comment/3/'
+    }],
+    resource_uri: '/api/v1/comment/1/'
   };
   var json = serializer.extractSingle(env.store, Comment, json_hash);
 
@@ -270,14 +270,18 @@ test("extractSingle with embedded objects inside embedded objects of same type",
       children: [{
         id: "4",
         body: "Another",
-        root: false
-      }]
+        root: false,
+        resource_uri: '/api/v1/comment/4/'
+      }],
+      resource_uri: '/api/v1/comment/2/'
     },
     {
       id: "3",
       body: "Foo",
-      root: false
-    }]
+      root: false,
+      resource_uri: '/api/v1/comment/3/'
+    }],
+    resource_uri: '/api/v1/comment/1/'
   };
   var json = serializer.extractSingle(env.store, Comment, json_hash);
 
@@ -309,18 +313,23 @@ test("extractSingle with embedded objects of same type, but from separate attrib
     name: "Course 1",
     prerequisiteUnits: [{
       id: "1",
-      name: "Unit 1"
+      name: "Unit 1",
+      resource_uri: '/api/v1/unit/1/'
     },{
       id: "3",
-      name: "Unit 3"
+      name: "Unit 3",
+      resource_uri: '/api/v1/unit/3/'
     }],
     units: [{
       id: "2",
-      name: "Unit 2"
+      name: "Unit 2",
+      resource_uri: '/api/v1/unit/2/'
     },{
       id: "4",
-      name: "Unit 4"
-    }]
+      name: "Unit 4",
+      resource_uri: '/api/v1/unit/4/'
+    }],
+    resource_uri: '/api/v1/course/1/'
   };
   var json = serializer.extractSingle(env.store, Course, json_hash);
 
@@ -352,10 +361,6 @@ test("extractArray", function() {
     "name": "Umber",
     "villains": ["1"]
   }]);
-
-  env.store.find("homePlanet", 1).then(async(function(minion){
-    equal(minion.get('name'), "Umber");
-  }));
 });
 
 test("extractArray with embedded objects", function() {
@@ -420,7 +425,7 @@ test("extractArray with embedded objects of same type as primary type", function
         id: "3",
         body: "Foo",
         root: false,
-        resource_uri: '/api/v1/homePlanet/3/'
+        resource_uri: '/api/v1/comment/3/'
       }],
       resource_uri: '/api/v1/comment/1/'
     }]
@@ -475,6 +480,7 @@ test("extractArray with embedded objects of same type, but from separate attribu
     },{
       id: "2",
       name: "Course 2",
+      resource_uri: '/api/v1/course/2/',
       prerequisiteUnits: [{
         id: "1",
         name: "Unit 1",

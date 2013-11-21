@@ -23,6 +23,7 @@ DS.DjangoTastypieSerializer = DS.JSONSerializer.extend({
 
   normalize: function (type, hash, prop) {
     this.normalizeId(hash);
+    this.normalizeUsingDeclaredMapping(type, hash);
     this.normalizeAttributes(type, hash);
     this.normalizeRelationships(type, hash);
 
@@ -32,6 +33,19 @@ DS.DjangoTastypieSerializer = DS.JSONSerializer.extend({
   normalizeId: function (hash) {
     hash.id = this.resourceUriToId(hash['resource_uri']);
     delete hash['resource_uri'];
+  },
+  
+  normalizeUsingDeclaredMapping: function(type, hash) {
+    var attrs = get(this, 'attrs'), payloadKey, key;
+
+    if (attrs) {
+      for (key in attrs) {
+        payloadKey = attrs[key];
+
+        hash[key] = hash[payloadKey];
+        delete hash[payloadKey];
+      }
+    }
   },
 
   normalizeAttributes: function (type, hash) {

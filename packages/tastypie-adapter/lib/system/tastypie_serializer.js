@@ -163,16 +163,24 @@ DS.DjangoTastypieSerializer = DS.JSONSerializer.extend({
   },
 
   serializeHasMany: function(record, json, relationship) {
-    var key = relationship.key;
+    var key = relationship.key,
+        attrs = get(this, 'attrs'),
+        config = attrs && attrs[key] ? attrs[key] : false;
     key = this.keyForRelationship ? this.keyForRelationship(key, "belongsTo") : key;
 
     var relationshipType = DS.RelationshipChange.determineRelationshipType(record.constructor, relationship);
 
     if (relationshipType === 'manyToNone' || relationshipType === 'manyToMany' || relationshipType === 'manyToOne') {
-      json[key] = get(record, relationship.key).map(function (next){
-        return this.relationshipToResourceUri(relationship, next);
-      }, this);
-            // TODO support for polymorphic manyToNone and manyToMany relationships
+      if (isEmbedded(config)) {
+        json[key] = get(record, key).map(function (relation) {
+          var data = relation.serialize();
+          return data;
+        });
+      } else {
+        json[key] = get(record, relationship.key).map(function (next){
+            return this.relationshipToResourceUri(relationship, next);
+        }, this);
+      }
     }
   },
 
@@ -183,4 +191,8 @@ DS.DjangoTastypieSerializer = DS.JSONSerializer.extend({
     json[key + "Type"] = belongsTo.constructor.typeKey;
   }
 });
+
+function isEmbedded(config) {
+  return config && (config.embedded === 'always' || config.embedded === 'load');
+}
 

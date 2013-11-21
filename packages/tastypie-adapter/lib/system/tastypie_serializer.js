@@ -40,7 +40,13 @@ DS.DjangoTastypieSerializer = DS.JSONSerializer.extend({
 
     if (attrs) {
       for (key in attrs) {
-        payloadKey = attrs[key];
+        if (typeof attrs[key] === 'object') {
+          payloadKey = attrs[key].key ? attrs[key].key : key;
+        } else {
+          payloadKey = attrs[key];
+        }
+        
+        if (key === payloadKey) { return; }
 
         hash[key] = hash[payloadKey];
         delete hash[payloadKey];

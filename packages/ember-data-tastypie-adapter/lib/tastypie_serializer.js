@@ -195,7 +195,7 @@ DS.DjangoTastypieSerializer = DS.RESTSerializer.extend({
     config = attrs && attrs[key] ? attrs[key] : false;
     key = this.keyForRelationship ? this.keyForRelationship(key, "belongsTo") : key;
 
-    var relationshipType = DS.RelationshipChange.determineRelationshipType(record.constructor, relationship);
+    var relationshipType = record.constructor.determineRelationshipType(relationship);
 
     if (relationshipType === 'manyToNone' || relationshipType === 'manyToMany' || relationshipType === 'manyToOne') {
       if (this.isEmbedded(config)) {
